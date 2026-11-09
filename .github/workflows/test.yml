@@ -1,0 +1,23 @@
+name: Shell tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Check shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in action.sh post-fs-data.sh service.sh uninstall.sh \
+                      bin/core.sh bin/daemon.sh bin/supervisor.sh \
+                      tests/selftest.sh config.example.sh scripts/package.sh; do
+            sh -n "$file"
+          done
+      - name: Run isolated tests
+        run: sh tests/selftest.sh
