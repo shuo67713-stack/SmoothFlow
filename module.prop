@@ -1,0 +1,6 @@
+id=smoothflow
+name=SmoothFlow 5.0.4 Open Source
+version=v5.0.4
+versionCode=504
+author=硕
+description=面向 OPD2513 的低开销 CPU 调度模块；逐节点快照与归属校验；不修改系统分区、GPU 或厂商温控策略。
