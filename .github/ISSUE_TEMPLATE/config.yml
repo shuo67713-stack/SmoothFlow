@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Releases（下载与更新说明）
+    url: https://github.com/shuo67713-stack/SmoothFlow/releases
+    about: 安装包与版本说明请看 Releases
