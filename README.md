@@ -1,5 +1,9 @@
 # SmoothFlow 5.0.4 — OPD2513
 
+[![Release](https://img.shields.io/github/v/release/shuo67713-stack/SmoothFlow)](https://github.com/shuo67713-stack/SmoothFlow/releases/tag/v5.0.4)
+[![License](https://img.shields.io/github/license/shuo67713-stack/SmoothFlow)](https://github.com/shuo67713-stack/SmoothFlow/blob/main/LICENSE)
+[![Shell tests](https://img.shields.io/github/actions/workflow/status/shuo67713-stack/SmoothFlow/test.yml?branch=main)](https://github.com/shuo67713-stack/SmoothFlow/actions/workflows/test.yml)
+
 **面向 OnePlus Pad 3 Pro（OPD2513）的低开销 CPU 调度模块。**
 
 SmoothFlow 根据屏幕状态和前台应用切换 CPU 调度档位，采用逐节点快照、写入归属记录和条件恢复机制，尽量避免与厂商服务或其它调度模块争抢参数。
