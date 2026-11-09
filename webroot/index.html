@@ -1,0 +1,99 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (c) 2026 硕 -->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>SmoothFlow</title>
+<style>
+:root{color-scheme:dark;--bg:#101114;--panel:#1a1c20;--line:#292c32;--text:#f2f3f5;--muted:#969ba5;--accent:#b9d7ff;--accentText:#142235;--good:#a8d8b0;--bad:#ffb4ab}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;padding:20px 16px calc(18px + env(safe-area-inset-bottom));background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif}
+main{max-width:600px;margin:0 auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 1px 20px}
+h1{font-size:19px;letter-spacing:.2px;font-weight:650;margin:0}
+.sub{font-size:12px;color:var(--muted);margin-top:3px}
+.pill{font-size:12px;color:var(--good);background:#243129;border-radius:20px;padding:5px 10px;white-space:nowrap}
+.section{margin-top:17px}.label{font-size:12px;color:var(--muted);margin:0 2px 8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:13px}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+button{font:inherit;cursor:pointer;border:0}
+.mode{min-height:42px;border-radius:10px;background:#25282e;color:#c5c8ce;font-size:13px;font-weight:550;padding:8px 5px}
+.mode.active{background:var(--accent);color:var(--accentText)}
+.mode:disabled{opacity:.55}
+#desc{font-size:12px;color:var(--muted);margin:10px 2px 0;min-height:18px}
+.metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.metric{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:11px 12px;min-width:0}
+.metric .name{font-size:12px;color:var(--muted)}
+.metric .value{font-size:18px;font-weight:620;font-variant-numeric:tabular-nums;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metric .unit{font-size:11px;color:var(--muted);font-weight:400}
+.status{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.status strong{font-size:14px;font-weight:600}.status span{font-size:12px;color:var(--muted)}
+.foot{font-size:11px;color:var(--muted);margin-top:12px;display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+#error{display:none;color:var(--bad);background:#382321;border-radius:10px;padding:10px 12px;margin-top:12px;font-size:12px}
+#toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,12px);opacity:0;transition:.2s;background:#30343b;color:#fff;padding:9px 15px;border-radius:20px;font-size:13px;pointer-events:none;max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@media(min-width:480px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+</style>
+</head>
+<body><main>
+<header><div><h1>SmoothFlow</h1><div class="sub" id="version">正在读取设备状态</div></div><span class="pill" id="runstate">检测中</span></header>
+<div class="section"><div class="label">运行模式</div><div class="panel">
+  <div class="modes">
+    <button class="mode active" data-profile="auto">自动</button>
+    <button class="mode" data-profile="daily">日常</button>
+    <button class="mode" data-profile="eco">省电</button>
+  </div>
+  <div id="desc">低开销 procfs 前台识别 · 10 秒档位切换 · 原厂 GPU / 温控不被改动</div>
+</div></div>
+<div class="section"><div class="label">实时状态</div><div class="metrics">
+  <div class="metric"><div class="name">小核频率</div><div class="value" id="p0Freq">—</div></div>
+  <div class="metric"><div class="name">大核频率</div><div class="value" id="p6Freq">—</div></div>
+  <div class="metric"><div class="name">GPU 频率</div><div class="value" id="gpuFreq">—</div></div>
+  <div class="metric"><div class="name">GPU 负载</div><div class="value" id="gpuBusy">—</div></div>
+</div></div>
+<div class="section panel">
+  <div class="status"><strong id="activeMode">当前：自动 · 等待状态</strong><span id="daemon">后台服务检测中</span></div>
+  <div class="foot"><span id="app">前台应用：—</span><span id="health">CPU 拓扑：检测中</span><span>OPD2513 · 快路径 procfs</span></div>
+</div>
+<div id="error"></div><div id="toast"></div>
+</main>
+<script>
+(function(){
+  var api=window.ksu||window.apatch||null,seq=0,busy=false;
+  var labels={auto:'自动',daily:'日常',eco:'省电'};
+  var desc={auto:'低开销前台识别：游戏启动后通常在一个 10 秒轮询周期内切换到游戏档，GPU 与温控交由原厂管理',daily:'固定日常均衡档，不自动切换游戏档',eco:'降低 CPU 维持频率与后台调度开销，适合轻度使用'};
+  function exec(cmd){return new Promise(function(resolve){
+    if(!api||typeof api.exec!=='function'){resolve({errno:-1,stdout:'',stderr:'未检测到管理器接口'});return;}
+    var cb='__sf_'+Date.now()+'_'+(seq++),done=false;
+    window[cb]=function(errno,stdout,stderr){if(done)return;done=true;try{delete window[cb]}catch(e){}resolve({errno:errno,stdout:stdout||'',stderr:stderr||''})};
+    try{api.exec(cmd,JSON.stringify({}),cb)}catch(e){if(!done){done=true;try{delete window[cb]}catch(_){}resolve({errno:-1,stdout:'',stderr:String(e)})}}
+  })}
+  function parse(s){var o={};(s||'').split('\n').forEach(function(x){var i=x.indexOf('=');if(i>0)o[x.slice(0,i)]=x.slice(i+1)});return o}
+  function raw(v){return v!==undefined&&v!==null&&String(v).trim()!==''&&String(v)!=='0'?String(v):''}
+  function mhz(v){var n=parseInt(v,10);return Number.isFinite(n)&&n>0?Math.round(n/1000)+' MHz':'—'}
+    function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}
+  function toast(s){var e=document.getElementById('toast');e.textContent=s;e.classList.add('show');clearTimeout(e._t);e._t=setTimeout(function(){e.classList.remove('show')},1800)}
+  function render(d){
+    var p=labels[d.profile]?d.profile:'auto',m=d.mode||'?';
+    set('version',(d.ver||'SmoothFlow')+' · 一加 Pad 3 Pro');
+    document.querySelectorAll('[data-profile]').forEach(function(b){b.classList.toggle('active',b.dataset.profile===p);b.disabled=busy});
+    set('desc',desc[p]);
+    var state={game:'游戏运行中',on:'日常运行中',eco:'省电运行中',off:'屏幕关闭 · 已还原'}[m]||'等待状态';
+    set('activeMode','当前：'+labels[p]+' · '+state);
+    set('runstate',d.daemon==='1'?'运行中':'未运行');
+    set('daemon',d.daemon==='1'?'后台服务正常':'后台服务未运行');
+    set('p0Freq',mhz(d.p0_cur));set('p6Freq',mhz(d.p6_cur));
+    set('gpuFreq',mhz(d.gpu_cur?String(parseInt(d.gpu_cur,10)*1000):''));
+    var load=parseInt(d.gpu_busy,10);set('gpuBusy',Number.isFinite(load)&&raw(d.gpu_busy)?load+'%':'—');
+    set('app','前台应用：'+(d.pkg||'桌面'));
+    set('health',d.topology==='ok'?'CPU 拓扑：正常':'CPU 拓扑：未通过安全检查');
+  }
+  function load(){if(busy||document.hidden)return;exec('sh /data/adb/modules/smoothflow/action.sh webdata').then(function(r){if(r.errno!==0||!r.stdout){var e=document.getElementById('error');e.style.display='block';e.textContent='读取状态失败：'+(r.stderr||'接口不可用');return}document.getElementById('error').style.display='none';render(parse(r.stdout))})}
+  document.querySelectorAll('[data-profile]').forEach(function(b){b.addEventListener('click',function(){if(busy)return;var p=b.dataset.profile;busy=true;document.querySelectorAll('[data-profile]').forEach(function(x){x.disabled=true});exec('sh /data/adb/modules/smoothflow/action.sh mode '+p).then(function(r){toast(r.errno===0?'已切换到'+labels[p]+'模式':'切换失败：'+(r.stderr||r.errno))}).finally(function(){busy=false;load()})})});
+  if(!api){var e=document.getElementById('error');e.style.display='block';e.textContent='未检测到管理器接口，请从 SukiSU Ultra 模块页面打开。'}
+  load();setInterval(load,10000);document.addEventListener('visibilitychange',function(){if(!document.hidden)load()});
+})();
+</script></body></html>
