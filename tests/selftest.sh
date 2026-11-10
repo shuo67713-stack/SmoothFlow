@@ -467,13 +467,13 @@ OUT=$(run '
 
 # ---- 30. 锁属主 PID 复用与活进程判定（M2） ----
 OUT=$(run '
-    mkdir -p "$PROC/4244" "$PROC/4245" "$DATA/lock-reused" "$DATA/lock-live"
+    mkdir -p "$PROC/4244" "$PROC/4245" "$DATADIR/lock-reused" "$DATADIR/lock-live"
     printf "4244 (old owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 222\\n" > "$PROC/4244/stat"
     printf "4245 (live owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 333\\n" > "$PROC/4245/stat"
-    printf "4244 111\\n" > "$DATA/lock-reused/pid"
-    printf "4245 333\\n" > "$DATA/lock-live/pid"
-    lock_owner_stale "$DATA/lock-reused"; _reused=$?
-    lock_owner_stale "$DATA/lock-live"; _live=$?
+    printf "4244 111\\n" > "$DATADIR/lock-reused/pid"
+    printf "4245 333\\n" > "$DATADIR/lock-live/pid"
+    lock_owner_stale "$DATADIR/lock-reused"; _reused=$?
+    lock_owner_stale "$DATADIR/lock-live"; _live=$?
     printf "%s|%s" "$_reused" "$_live"
 ')
 [ "$OUT" = "0|1" ] && ok "锁回收识别 PID 重用，同时保护启动时间匹配的活属主" || bad "锁属主身份判定：[$OUT]"
@@ -492,16 +492,16 @@ OUT=$(run '
 
 # ---- 32. 启动恢复只回收确认死亡的 .reap gate ----
 OUT=$(run '
-    mkdir -p "$DATA/profile.lock.reap" "$DATA/supervisor.lock.reap" "$DATA/daemon.lock.reap" "$PROC/4246"
-    printf "99999999 1\\n" > "$DATA/profile.lock.reap/pid"
+    mkdir -p "$DATADIR/profile.lock.reap" "$DATADIR/supervisor.lock.reap" "$DATADIR/daemon.lock.reap" "$PROC/4246"
+    printf "99999999 1\\n" > "$DATADIR/profile.lock.reap/pid"
     printf "4246 (active reaper) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 444\\n" > "$PROC/4246/stat"
-    printf "4246 444\\n" > "$DATA/supervisor.lock.reap/pid"
-    recover_stale_reap_gate "$DATA/profile.lock.reap"; _dead=$?
-    recover_stale_reap_gate "$DATA/supervisor.lock.reap" >/dev/null 2>&1; _active=$?
-    recover_stale_reap_gate "$DATA/daemon.lock.reap" >/dev/null 2>&1; _unknown=$?
-    if [ -d "$DATA/profile.lock.reap" ]; then _dead_left=1; else _dead_left=0; fi
-    if [ -d "$DATA/supervisor.lock.reap" ]; then _active_left=1; else _active_left=0; fi
-    if [ -d "$DATA/daemon.lock.reap" ]; then _unknown_left=1; else _unknown_left=0; fi
+    printf "4246 444\\n" > "$DATADIR/supervisor.lock.reap/pid"
+    recover_stale_reap_gate "$DATADIR/profile.lock.reap"; _dead=$?
+    recover_stale_reap_gate "$DATADIR/supervisor.lock.reap" >/dev/null 2>&1; _active=$?
+    recover_stale_reap_gate "$DATADIR/daemon.lock.reap" >/dev/null 2>&1; _unknown=$?
+    if [ -d "$DATADIR/profile.lock.reap" ]; then _dead_left=1; else _dead_left=0; fi
+    if [ -d "$DATADIR/supervisor.lock.reap" ]; then _active_left=1; else _active_left=0; fi
+    if [ -d "$DATADIR/daemon.lock.reap" ]; then _unknown_left=1; else _unknown_left=0; fi
     printf "%s|%s|%s|%s|%s|%s" "$_dead" "$_active" "$_unknown" "$_dead_left" "$_active_left" "$_unknown_left"
 ')
 [ "$OUT" = "0|1|1|0|1|1" ] && ok "启动恢复只清除确认死亡属主 gate，保留活跃及身份不明 gate" || bad "reap gate 恢复保护：[$OUT]"
