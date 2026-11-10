@@ -102,7 +102,14 @@ printf "com.miHoYo.Genshin\n" > "$PROC/100/cmdline"
 printf 'com.android.launcher3\n' > "$PROC/101/cmdline"
 printf '100\n101\n' > "$CG/top-app/cgroup.procs"
 
-run() { sh -c ". '$CORE'; $1"; }
+run() {
+    SF_TEST_CORE="$CORE" SF_TEST_COMMAND="$1" sh -c '
+        mkdir -p "$SF_PROC/$$"
+        printf "%s (selftest runner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12345\n" "$$" > "$SF_PROC/$$/stat"
+        . "$SF_TEST_CORE"
+        eval "$SF_TEST_COMMAND"
+    '
+}
 
 # ---- 1. 拓扑识别 ----
 OUT=$(run 'printf "%s|%s|%s|%s\n" "$CPU_TOPOLOGY_OK" "${CPU0##*/}" "${CPU6##*/}" "$WALT_OK"')
@@ -241,7 +248,7 @@ printf 'GAME_MIN0=1800000\n' > "$DATA/config.sh"
 run 'apply_game' >/dev/null
 expect "$P0/scaling_min_freq" 1804800 "游戏档最低频率对齐到 1804800"
 run 'apply_on' >/dev/null
-expect "$P0/scaling_min_freq" 787200 "退出游戏后最低频率回落原厂值"
+expect "$P0/scaling_min_freq" 787200 "退出游戏后最低频率回落基线值"
 rm -f "$DATA/config.sh"
 run 'apply_off' >/dev/null
 
@@ -369,6 +376,165 @@ printf '10.50\n' > "$CG/display/cpu.uclamp.min"
 OUT=$(run 'drift_detect on')
 [ "$OUT" -ge 1 ] 2>/dev/null && ok "drift_detect 能识别 uclamp 小数偏差" || bad "uclamp 小数漂移检测：[$OUT]"
 run 'apply_off' >/dev/null
+
+# ---- 26. stop_daemon 的 PID 文件清理不得删除并发写入的新实例记录 ----
+printf '111 222\n' > "$DATA/daemon.pid"
+OUT=$(run 'remove_pidfile_if_unchanged "$PIDF" "111 222" 1; [ -f "$PIDF" ]; printf "%s" "$?"')
+[ "$OUT" = 1 ] && ok "PID 文件内容未变化时允许清理旧记录" || bad "旧 PID 文件清理：[$OUT]"
+printf '333 444\n' > "$DATA/daemon.pid"
+OUT=$(run 'remove_pidfile_if_unchanged "$PIDF" "111 222" 1; read_node "$PIDF"')
+[ "$OUT" = "333 444" ] && ok "PID 文件已被新实例更新时保留新记录" || bad "并发 PID 文件保护：[$OUT]"
+rm -f "$DATA/daemon.pid"
+: > "$DATA/daemon.pid"
+OUT=$(run 'remove_pidfile_if_unchanged "$PIDF" "" 1; [ -e "$PIDF" ]; printf "%s" "$?"')
+[ "$OUT" = 1 ] && ok "空 PID 文件可按捕获状态清理" || bad "空 PID 文件清理：[$OUT]"
+
+
+# ---- 27. 配置热变更后按实际归属值恢复频率节点（M1） ----
+: > "$DATA/defaults.txt"
+: > "$DATA/applied.txt"
+rm -f "$DATA/config.sh"
+printf 'ECO_MAX6=1996800\n' > "$DATA/config.sh"
+OUT=$(run '
+    load_config; validate_config; apply_eco >/dev/null || exit 9
+    _eco_written=$(read_node "$CPU6/scaling_max_freq")
+    printf "ECO_MAX6=2496000\\n" > "$DATADIR/config.sh"
+    load_config; validate_config; apply_on >/dev/null || exit 8
+    printf "%s|%s" "$_eco_written" "$(read_node "$CPU6/scaling_max_freq")"
+')
+[ "$OUT" = "1996800|4512000" ] && ok "省电档配置变更后高簇 max 按归属记录恢复基线" || bad "M1 省电 max 配置变更恢复：[$OUT]"
+run 'apply_off' >/dev/null
+: > "$DATA/defaults.txt"
+: > "$DATA/applied.txt"
+printf 'GAME_MIN0=1800000\n' > "$DATA/config.sh"
+OUT=$(run '
+    load_config; validate_config; apply_game >/dev/null || exit 9
+    _game_written=$(read_node "$CPU0/scaling_min_freq")
+    printf "GAME_MIN0=0\\n" > "$DATADIR/config.sh"
+    load_config; validate_config; apply_on >/dev/null || exit 8
+    printf "%s|%s" "$_game_written" "$(read_node "$CPU0/scaling_min_freq")"
+')
+[ "$OUT" = "1804800|787200" ] && ok "游戏档配置变更后低簇 min 按归属记录恢复基线" || bad "M1 游戏 min 配置变更恢复：[$OUT]"
+rm -f "$DATA/config.sh"
+run 'apply_off' >/dev/null
+
+# ---- 28. capture 修复同路径畸形空快照行（S9） ----
+: > "$DATA/defaults.txt"
+: > "$DATA/applied.txt"
+printf '%s \\n%s 123\n' "$W0/hispeed_freq" "$W0/hispeed_freq" > "$DATA/defaults.txt"
+printf '1286400\n' > "$P0/walt/hispeed_freq"
+OUT=$(run 'capture "$W0/hispeed_freq" >/dev/null; printf "%s|%s" "$(def_of "$W0/hispeed_freq")" "$(grep -c "^$W0/hispeed_freq " "$DEF" 2>/dev/null)"')
+[ "$OUT" = "1286400|1" ] && ok "capture 替换畸形空快照行且不产生重复路径" || bad "畸形快照修复：[$OUT]"
+
+
+# ---- 29. stop_daemon 必须对“仍存活/身份不确定”返回失败（M3） ----
+OUT=$(run '
+    mkdir -p "$PROC/4242"
+    printf "4242 (sh) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 999\\n" > "$PROC/4242/stat"
+    printf "/system/bin/sh /data/adb/modules/smoothflow/bin/daemon.sh\\n" > "$PROC/4242/cmdline"
+    printf "4242 999\\n" > "$PIDF"
+    kill() { return 0; }
+    sleep() { :; }
+    pid_is_ours() { [ -d "$PROC/$1" ] && [ "$2" = daemon ]; }
+    stop_daemon >/dev/null 2>&1; _rc=$?
+    printf "%s|%s" "$_rc" "$(read_node "$PIDF")"
+')
+case "$OUT" in 1\|4242\ 999) ok "stop_daemon 对仍存活的 daemon 返回失败并保留 PID 记录" ;; *) bad "stop_daemon 活进程失败语义：[$OUT]" ;; esac
+OUT=$(run '
+    rm -rf "$PROC/4242"
+    kill() { return 0; }
+    sleep() { :; }
+    pid_is_ours() { [ -d "$PROC/$1" ] && [ "$2" = daemon ]; }
+    stop_daemon >/dev/null 2>&1; _rc=$?
+    printf "%s|" "$_rc"; if [ -e "$PIDF" ]; then printf present; else printf absent; fi
+')
+[ "$OUT" = "0|absent" ] && ok "daemon 进程消失后 stop_daemon 才报告成功并清理 PID" || bad "stop_daemon 已退出语义：[$OUT]"
+
+OUT=$(run '
+    mkdir -p "$PROC/4243"
+    printf "4243 (other worker) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 999\\n" > "$PROC/4243/stat"
+    printf "other_process\\n" > "$PROC/4243/cmdline"
+    printf "4243 999\\n" > "$PIDF"
+    kill() { printf called >> "$DATADIR/kill_called"; return 0; }
+    sleep() { :; }
+    pid_is_ours() { return 1; }
+    stop_daemon >/dev/null 2>&1; _rc=$?
+    printf "%s|" "$_rc"; if [ -e "$DATADIR/kill_called" ]; then printf killed; else printf untouched; fi
+')
+[ "$OUT" = "1|untouched" ] && ok "身份校验不通过时 stop_daemon 不误杀且返回失败" || bad "stop_daemon 误杀保护：[$OUT]"
+
+
+
+# ---- 30. 锁属主 PID 复用与活进程判定（M2） ----
+OUT=$(run '
+    mkdir -p "$PROC/4244" "$PROC/4245" "$DATA/lock-reused" "$DATA/lock-live"
+    printf "4244 (old owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 222\\n" > "$PROC/4244/stat"
+    printf "4245 (live owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 333\\n" > "$PROC/4245/stat"
+    printf "4244 111\\n" > "$DATA/lock-reused/pid"
+    printf "4245 333\\n" > "$DATA/lock-live/pid"
+    lock_owner_stale "$DATA/lock-reused"; _reused=$?
+    lock_owner_stale "$DATA/lock-live"; _live=$?
+    printf "%s|%s" "$_reused" "$_live"
+')
+[ "$OUT" = "0|1" ] && ok "锁回收识别 PID 重用，同时保护启动时间匹配的活属主" || bad "锁属主身份判定：[$OUT]"
+
+# ---- 31. daemon 锁将单实例入口串行化 ----
+OUT=$(run '
+    sleep() { :; }
+    mkdir -p "$PROC/$$"
+    acquire_daemon_lock; _first=$?
+    acquire_daemon_lock >/dev/null 2>&1; _second=$?
+    release_daemon_lock
+    if [ -d "$DAEMON_LOCK" ]; then _left=present; else _left=absent; fi
+    printf "%s|%s|%s" "$_first" "$_second" "$_left"
+')
+[ "$OUT" = "0|1|absent" ] && ok "daemon 锁允许首实例并拒绝并发第二实例，释放后无残留" || bad "daemon 单实例锁：[$OUT]"
+
+# ---- 32. 启动恢复只回收确认死亡的 .reap gate ----
+OUT=$(run '
+    mkdir -p "$DATA/profile.lock.reap" "$DATA/supervisor.lock.reap" "$DATA/daemon.lock.reap" "$PROC/4246"
+    printf "99999999 1\\n" > "$DATA/profile.lock.reap/pid"
+    printf "4246 (active reaper) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 444\\n" > "$PROC/4246/stat"
+    printf "4246 444\\n" > "$DATA/supervisor.lock.reap/pid"
+    recover_stale_reap_gate "$DATA/profile.lock.reap"; _dead=$?
+    recover_stale_reap_gate "$DATA/supervisor.lock.reap" >/dev/null 2>&1; _active=$?
+    recover_stale_reap_gate "$DATA/daemon.lock.reap" >/dev/null 2>&1; _unknown=$?
+    if [ -d "$DATA/profile.lock.reap" ]; then _dead_left=1; else _dead_left=0; fi
+    if [ -d "$DATA/supervisor.lock.reap" ]; then _active_left=1; else _active_left=0; fi
+    if [ -d "$DATA/daemon.lock.reap" ]; then _unknown_left=1; else _unknown_left=0; fi
+    printf "%s|%s|%s|%s|%s|%s" "$_dead" "$_active" "$_unknown" "$_dead_left" "$_active_left" "$_unknown_left"
+')
+[ "$OUT" = "0|1|1|0|1|1" ] && ok "启动恢复只清除确认死亡属主 gate，保留活跃及身份不明 gate" || bad "reap gate 恢复保护：[$OUT]"
+
+# ---- 33. profile unlock 必须同时匹配 PID 与启动时间 ----
+OUT=$(run '
+    mkdir -p "$PROFILE_LOCK"
+    _start=$(proc_start_time $$ 2>/dev/null) || _start=
+    printf "%s %s\\n" "$$" wrong-start > "$PROFILE_LOCK/pid"
+    unlock_profile
+    if [ -d "$PROFILE_LOCK" ]; then _wrong=kept; else _wrong=removed; fi
+    printf "%s %s\\n" "$$" "$_start" > "$PROFILE_LOCK/pid"
+    unlock_profile
+    if [ -d "$PROFILE_LOCK" ]; then _right=kept; else _right=removed; fi
+    printf "%s|%s" "$_wrong" "$_right"
+')
+[ "$OUT" = "kept|removed" ] && ok "profile unlock 同时校验 PID 与启动时间" || bad "profile unlock 身份校验：[$OUT]"
+
+# ---- 34. supervisor 指数退避、上限、熔断与稳定恢复 ----
+OUT=$(run '
+    _fail=0; _back=10; _seq=
+    _i=0
+    while [ "$_i" -lt 8 ]; do
+        _state=$(supervisor_backoff_update 0 "$_fail" "$_back") || exit 2
+        set -- $_state
+        _fail=$1; _back=$2; _trip=$3
+        _seq="$_seq$_fail:$_back:$_trip "
+        _i=$((_i + 1))
+    done
+    _reset=$(supervisor_backoff_update 60 "$_fail" "$_back")
+    printf "%s|%s" "$_seq" "$_reset"
+')
+[ "$OUT" = "1:10:0 2:20:0 3:40:0 4:80:0 5:160:0 6:300:0 7:300:0 8:300:1 |0 10 0" ] && ok "supervisor 退避 10→300 秒、8 次熔断、稳定运行后重置" || bad "supervisor 退避状态机：[$OUT]"
 
 printf '\n通过 %s 项，失败 %s 项\n' "$PASS" "$FAIL"
 [ "$FAIL" = 0 ]
