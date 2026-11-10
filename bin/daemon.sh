@@ -7,25 +7,41 @@
 MODDIR=$(cd "${0%/*}/.." && pwd)
 . "$MODDIR/bin/core.sh"
 
+if ! acquire_daemon_lock; then
+    log "daemon 已运行或锁状态不明确，拒绝重复启动"
+    exit 0
+fi
+if daemon_alive; then
+    release_daemon_lock
+    log "检测到已有 daemon 实例，拒绝重复启动"
+    exit 0
+fi
 _daemon_start=$(proc_start_time $$ 2>/dev/null) || _daemon_start=
 [ -n "$_daemon_start" ] || {
     log "无法读取 daemon 启动时间，拒绝进入后台循环"
+    release_daemon_lock
     exit 1
 }
 cleanup_daemon() {
     _cd_now=$(read_node "$PIDF" 2>/dev/null) || _cd_now=
     [ "$_cd_now" = "$$ $_daemon_start" ] && rm -f "$PIDF" 2>/dev/null
+    release_daemon_lock
 }
 # 正常退出、停止标记退出及信号退出均清理自身 PID 文件；不碰其它实例的记录。
 trap 'cleanup_daemon' EXIT
 trap 'exit 0' HUP INT TERM
-if ! printf '%s %s\n' "$$" "$_daemon_start" > "$PIDF" 2>/dev/null; then
+_daemon_pid_tmp="$PIDF.tmp.$$"
+if ! printf '%s %s\n' "$$" "$_daemon_start" > "$_daemon_pid_tmp" 2>/dev/null || ! mv -f "$_daemon_pid_tmp" "$PIDF" 2>/dev/null; then
+    rm -f "$_daemon_pid_tmp" 2>/dev/null
     log "daemon PID 文件写入失败，拒绝进入后台循环"
+    release_daemon_lock
     exit 1
 fi
 _daemon_saved=$(read_node "$PIDF" 2>/dev/null) || _daemon_saved=
 if [ "$_daemon_saved" != "$$ $_daemon_start" ]; then
     log "daemon PID 文件读回校验失败，拒绝进入后台循环"
+    rm -f "$_daemon_pid_tmp" 2>/dev/null
+    release_daemon_lock
     exit 1
 fi
 log "守护进程启动 pid=$$ 节拍=10s 快路径=procfs"
@@ -49,6 +65,20 @@ game_misses=0
 while :; do
     is_stopped && { log "收到停止标记，daemon 退出"; exit 0; }
     tick=$((tick + 1))
+
+    # cgroup 可能晚于 daemon 启动才挂载；每 60 秒重探一次，避免永久退化到 dumpsys。
+    if [ $((tick % 6)) -eq 1 ]; then
+        _cg_new=0
+        front_cgroup_file >/dev/null 2>&1 && _cg_new=1
+        if [ "$_cg_new" != "$has_cg" ]; then
+            has_cg=$_cg_new
+            if [ "$has_cg" = 1 ]; then
+                log "top-app cgroup 已就绪，游戏识别切换到 procfs 快路径"
+            else
+                log "top-app cgroup 暂不可用，游戏识别临时退回 dumpsys 兜底"
+            fi
+        fi
+    fi
 
     # --- 配置热加载：每 10 个节拍（约 100s）检查一次 mtime，变更后重新读取 ---
     if [ $((tick % 10)) -eq 1 ]; then
