@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.4 状态守护
+# SmoothFlow 5.0.5 状态守护
 # 节拍 10 秒；热路径只做 Shell 内建 procfs/sysfs 读取，不调用 dumpsys。
 # 仅在状态变化时写 sysfs，参数不变时零写入。
 MODDIR=$(cd "${0%/*}/.." && pwd)

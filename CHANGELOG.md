@@ -1,5 +1,16 @@
 # 更新记录
 
+## v5.0.5 — Bugfix Release
+
+- M1：配置热更新后 max/min 改走归属记录恢复，修复 ECO/GAME 档位切换后省电上限与游戏最低频残留（含 ON_MIN 非零场景）。
+- M2：锁陈旧回收改为 `.reap` 门禁 + 原子改名协议，消除 TOCTOU 双持；service.sh 不再自行拆锁。
+- Major-1：新增 `.reap` 门禁启动恢复，带有效属主记录且确认死亡的遗留门禁在开机时隔离清理，修复个别 SIGKILL 时机下模块跨重启永久失效；空门禁仍保持 fail-closed。
+- M3：stop_daemon 增加 TERM → KILL → 复核与失败返回，action/service/uninstall 按返回值处理，身份不符不误杀。
+- daemon 改为 DAEMON_LOCK 终身持锁保证单实例；unlock 增加双重校验；supervisor 崩溃恢复改指数退避（10→300 秒），8 次快速失败后熔断冷却 15 分钟。
+- S1：游戏识别 cgroup 路径每 60 秒重探，支持晚挂载切换。
+- 隔离自测扩充至 89 项，并修复第 30/32 组在只读根目录/非 root 环境下夹具路径塌陷的问题（测试夹具问题，非产品代码）。
+- 默认调度参数、游戏识别策略与 10 秒守护节拍不变；不宣称真实设备 FPS、帧时间、温度或功耗提升。
+
 ## v5.0.4 — Open Source Preparation
 
 - 作者署名统一为 `硕`，整理 GitHub / 酷安发布材料。

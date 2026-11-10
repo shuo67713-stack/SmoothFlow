@@ -34,7 +34,7 @@ sh scripts/package.sh /path/to/output
 
 ## GitHub Release 建议
 
-- Tag：`v5.0.4`
-- Release title：`SmoothFlow v5.0.4 — Open Source Preparation`
-- 上传 `SmoothFlow_5.0.4_OPD2513.zip` 和对应 `.sha256` 文件。
-- Release notes 使用 `CHANGELOG.md` 中的 v5.0.4 条目，并明确当前没有实机性能基准。
+- Tag：`v5.0.5`
+- Release title：`SmoothFlow v5.0.5 — Bugfix Release`
+- 上传 `SmoothFlow_5.0.5_OPD2513.zip` 和对应 `.sha256` 文件。
+- Release notes 使用 `CHANGELOG.md` 中的 v5.0.5 条目，并明确当前没有实机性能基准。

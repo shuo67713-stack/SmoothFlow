@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.4 启动阶段
+# SmoothFlow 5.0.5 启动阶段
 # 顺序：等待 boot_completed → 确认 CPU 拓扑 → 补快照 → 按屏幕状态应用 → 启动守护
 case "$0" in */*) MODDIR=$(cd "${0%/*}" && pwd) ;; *) MODDIR=$(pwd) ;; esac
 . "$MODDIR/bin/core.sh"

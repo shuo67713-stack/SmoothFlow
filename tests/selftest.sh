@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.4 隔离自测
+# SmoothFlow 5.0.5 隔离自测
 # 在临时目录里构造假的 sysfs / procfs / cgroup，验证：
 #   拓扑识别、日常/游戏/省电档写入、恢复语义、拓扑失效 fail-closed、
 #   配置白名单解析、cgroup 游戏识别、屏幕状态快路径。

@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.4 看门狗：daemon 意外退出时指数退避重试并对连续快速失败冷却
+# SmoothFlow 5.0.5 看门狗：daemon 意外退出时指数退避重试并对连续快速失败冷却
 MODDIR=$(cd "${0%/*}/.." && pwd)
 . "$MODDIR/bin/core.sh"
 

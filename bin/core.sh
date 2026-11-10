@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.4 核心库
+# SmoothFlow 5.0.5 核心库
 # 只写 sysfs / procfs 下的运行时参数，不挂载、不修改任何分区。
 # 所有改动在重启后失效；uninstall.sh 会把仍由本模块持有的参数还原为首次写入前采集的基线值。
 #
