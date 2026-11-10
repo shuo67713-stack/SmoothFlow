@@ -31,17 +31,16 @@ else
     log "CPU policy 检查完成（等待 $((n * 2))s）：低=$CPU0 高=$CPU6 容量=$CPU_LOW_SCORE/$CPU_HIGH_SCORE"
 fi
 
-# 清理上一次运行可能残留的锁目录（属主进程已不存在时）
-if [ -d "$PROFILE_LOCK" ]; then
-    _lk_p=$(read_node "$PROFILE_LOCK/pid" 2>/dev/null) || _lk_p=
-    case "${_lk_p%% *}" in
-        ''|*[!0-9]*) rmdir "$PROFILE_LOCK" 2>/dev/null ;;
-        *) [ -d "$PROC/${_lk_p%% *}" ] || { rm -f "$PROFILE_LOCK/pid" 2>/dev/null; rmdir "$PROFILE_LOCK" 2>/dev/null; } ;;
-    esac
-fi
+# 主锁残留仍由 core.sh 串行化回收；启动阶段另调用受限的 gate 恢复函数。
 
 # 已有守护进程先停掉，避免与启动阶段的应用竞争
-if [ -f "$PIDF" ] || [ -f "$SUPIDF" ]; then stop_daemon; fi
+if [ -f "$PIDF" ] || [ -f "$SUPIDF" ]; then
+    stop_daemon || { log "旧守护进程未能确认停止，拒绝启动新实例"; exit 1; }
+fi
+
+# 只有在旧守护进程已停止后，才恢复被 SIGKILL 留下的陈旧 .reap 门禁。
+# 活跃 action/锁持有者的 PID+启动时间会阻止清理；不确定状态保持 fail-closed。
+recover_stale_reap_gates || log "部分回收门禁未能安全恢复；相关锁操作将继续 fail-closed"
 
 if [ "$ready" = 1 ]; then
     # 系统启动完成且目标节点就绪后，才采集厂商最终值。

@@ -10,7 +10,7 @@ SmoothFlow 5.0.4 开源｜OPD2513 CPU 调度模块
 **维护者：硕**  
 **适用设备：OnePlus Pad 3 Pro（OPD2513）**  
 **版本：v5.0.4 / versionCode 504**  
-**开源地址：https://github.com/shuo67713-stack/SmoothFlow**
+**开源地址：请在此处填写 GitHub 仓库链接**
 
 SmoothFlow 是一个面向 OPD2513 的 Root 调度模块，按屏幕状态和前台应用切换 CPU 调度档位，提供自动、日常和省电模式。
 
@@ -31,7 +31,7 @@ SmoothFlow 是一个面向 OPD2513 的 Root 调度模块，按屏幕状态和前
 ### 下载与安装
 
 安装包请从 GitHub Releases 下载：  
-https://github.com/shuo67713-stack/SmoothFlow/releases/tag/v5.0.4
+请在此处填写 `v5.0.4` Release 链接。
 
 升级前先在 Root Shell 执行旧版本的恢复命令：
 
@@ -46,7 +46,7 @@ sh /data/adb/modules/smoothflow/action.sh restore
 
 - 当前只针对 OPD2513 设计；其它设备不要直接刷入。
 - 不同 ROM、内核版本的节点暴露情况可能不同；设备检查失败时模块会拒绝写入。
-- 5.0.4 已通过 Shell 语法检查和 75 项隔离自测，并已完成真机性能实测，帧率、温度、续航均有提升。
+- 5.0.4 已通过 Shell 语法检查和 75 项隔离自测，但**尚无本版本的完整实机性能基准**，不承诺 FPS、温度或续航提升。
 - Root 调度模块存在设备不稳定风险，使用前请了解恢复方法并自行备份。
 - 项目由 AI 辅助起草并经维护者审查；最终兼容性与发布责任由维护者承担。
 

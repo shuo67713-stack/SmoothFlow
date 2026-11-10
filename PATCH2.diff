@@ -1,0 +1,2520 @@
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/.github/workflows/test.yml /tmp/sf_batch/patch/SmoothFlow_5.0.4/.github/workflows/test.yml
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/.github/workflows/test.yml	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/.github/workflows/test.yml	2026-11-10 03:49:45.027714936 +0000
+@@ -16,8 +16,10 @@
+           set -euo pipefail
+           for file in action.sh post-fs-data.sh service.sh uninstall.sh \
+                       bin/core.sh bin/daemon.sh bin/supervisor.sh \
+-                      tests/selftest.sh config.example.sh scripts/package.sh; do
++                      tests/selftest.sh tests/lock_stress.sh config.example.sh scripts/package.sh; do
+             sh -n "$file"
+           done
+       - name: Run isolated tests
+         run: sh tests/selftest.sh
++      - name: Run dual-process lock stress tests
++        run: sh tests/lock_stress.sh
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/CHANGELOG.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/CHANGELOG.md
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-09 05:05:26.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-10 03:49:58.301755465 +0000
+@@ -8,7 +8,7 @@
+ - daemon 正常退出、停止标记退出或收到终止信号时，按 PID 与启动时间双重校验清理自身 PID 文件。
+ - 状态面板对 uclamp 零值的判断使用同一规范化规则。
+ - 新增 uclamp 小数写入、原值恢复和漂移检测回归用例。
+-- 增加 MIT License、AI 辅助开发说明、贡献指南、安全策略、行为准则和 GitHub Actions 测试流程。
++- 增加 GPL-3.0 License、AI 辅助开发说明、贡献指南、安全策略、行为准则和 GitHub Actions 测试流程。
+ - 默认调度参数、游戏规则、10 秒守护节拍不作性能性调整。
+ - 不增加 GPU、温控、分区写入；不宣称真实设备 FPS、帧时间或功耗提升。
+ 
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/LICENSE /tmp/sf_batch/patch/SmoothFlow_5.0.4/LICENSE
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/LICENSE	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/LICENSE	2026-11-10 03:39:41.478453194 +0000
+@@ -1,21 +1,674 @@
+-MIT License
++                    GNU GENERAL PUBLIC LICENSE
++                       Version 3, 29 June 2007
+ 
+-Copyright (c) 2026 硕
++ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
++ Everyone is permitted to copy and distribute verbatim copies
++ of this license document, but changing it is not allowed.
+ 
+-Permission is hereby granted, free of charge, to any person obtaining a copy
+-of this software and associated documentation files (the "Software"), to deal
+-in the Software without restriction, including without limitation the rights
+-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+-copies of the Software, and to permit persons to whom the Software is
+-furnished to do so, subject to the following conditions:
+-
+-The above copyright notice and this permission notice shall be included in all
+-copies or substantial portions of the Software.
+-
+-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+-SOFTWARE.
++                            Preamble
++
++  The GNU General Public License is a free, copyleft license for
++software and other kinds of works.
++
++  The licenses for most software and other practical works are designed
++to take away your freedom to share and change the works.  By contrast,
++the GNU General Public License is intended to guarantee your freedom to
++share and change all versions of a program--to make sure it remains free
++software for all its users.  We, the Free Software Foundation, use the
++GNU General Public License for most of our software; it applies also to
++any other work released this way by its authors.  You can apply it to
++your programs, too.
++
++  When we speak of free software, we are referring to freedom, not
++price.  Our General Public Licenses are designed to make sure that you
++have the freedom to distribute copies of free software (and charge for
++them if you wish), that you receive source code or can get it if you
++want it, that you can change the software or use pieces of it in new
++free programs, and that you know you can do these things.
++
++  To protect your rights, we need to prevent others from denying you
++these rights or asking you to surrender the rights.  Therefore, you have
++certain responsibilities if you distribute copies of the software, or if
++you modify it: responsibilities to respect the freedom of others.
++
++  For example, if you distribute copies of such a program, whether
++gratis or for a fee, you must pass on to the recipients the same
++freedoms that you received.  You must make sure that they, too, receive
++or can get the source code.  And you must show them these terms so they
++know their rights.
++
++  Developers that use the GNU GPL protect your rights with two steps:
++(1) assert copyright on the software, and (2) offer you this License
++giving you legal permission to copy, distribute and/or modify it.
++
++  For the developers' and authors' protection, the GPL clearly explains
++that there is no warranty for this free software.  For both users' and
++authors' sake, the GPL requires that modified versions be marked as
++changed, so that their problems will not be attributed erroneously to
++authors of previous versions.
++
++  Some devices are designed to deny users access to install or run
++modified versions of the software inside them, although the manufacturer
++can do so.  This is fundamentally incompatible with the aim of
++protecting users' freedom to change the software.  The systematic
++pattern of such abuse occurs in the area of products for individuals to
++use, which is precisely where it is most unacceptable.  Therefore, we
++have designed this version of the GPL to prohibit the practice for those
++products.  If such problems arise substantially in other domains, we
++stand ready to extend this provision to those domains in future versions
++of the GPL, as needed to protect the freedom of users.
++
++  Finally, every program is threatened constantly by software patents.
++States should not allow patents to restrict development and use of
++software on general-purpose computers, but in those that do, we wish to
++avoid the special danger that patents applied to a free program could
++make it effectively proprietary.  To prevent this, the GPL assures that
++patents cannot be used to render the program non-free.
++
++  The precise terms and conditions for copying, distribution and
++modification follow.
++
++                       TERMS AND CONDITIONS
++
++  0. Definitions.
++
++  "This License" refers to version 3 of the GNU General Public License.
++
++  "Copyright" also means copyright-like laws that apply to other kinds of
++works, such as semiconductor masks.
++
++  "The Program" refers to any copyrightable work licensed under this
++License.  Each licensee is addressed as "you".  "Licensees" and
++"recipients" may be individuals or organizations.
++
++  To "modify" a work means to copy from or adapt all or part of the work
++in a fashion requiring copyright permission, other than the making of an
++exact copy.  The resulting work is called a "modified version" of the
++earlier work or a work "based on" the earlier work.
++
++  A "covered work" means either the unmodified Program or a work based
++on the Program.
++
++  To "propagate" a work means to do anything with it that, without
++permission, would make you directly or secondarily liable for
++infringement under applicable copyright law, except executing it on a
++computer or modifying a private copy.  Propagation includes copying,
++distribution (with or without modification), making available to the
++public, and in some countries other activities as well.
++
++  To "convey" a work means any kind of propagation that enables other
++parties to make or receive copies.  Mere interaction with a user through
++a computer network, with no transfer of a copy, is not conveying.
++
++  An interactive user interface displays "Appropriate Legal Notices"
++to the extent that it includes a convenient and prominently visible
++feature that (1) displays an appropriate copyright notice, and (2)
++tells the user that there is no warranty for the work (except to the
++extent that warranties are provided), that licensees may convey the
++work under this License, and how to view a copy of this License.  If
++the interface presents a list of user commands or options, such as a
++menu, a prominent item in the list meets this criterion.
++
++  1. Source Code.
++
++  The "source code" for a work means the preferred form of the work
++for making modifications to it.  "Object code" means any non-source
++form of a work.
++
++  A "Standard Interface" means an interface that either is an official
++standard defined by a recognized standards body, or, in the case of
++interfaces specified for a particular programming language, one that
++is widely used among developers working in that language.
++
++  The "System Libraries" of an executable work include anything, other
++than the work as a whole, that (a) is included in the normal form of
++packaging a Major Component, but which is not part of that Major
++Component, and (b) serves only to enable use of the work with that
++Major Component, or to implement a Standard Interface for which an
++implementation is available to the public in source code form.  A
++"Major Component", in this context, means a major essential component
++(kernel, window system, and so on) of the specific operating system
++(if any) on which the executable work runs, or a compiler used to
++produce the work, or an object code interpreter used to run it.
++
++  The "Corresponding Source" for a work in object code form means all
++the source code needed to generate, install, and (for an executable
++work) run the object code and to modify the work, including scripts to
++control those activities.  However, it does not include the work's
++System Libraries, or general-purpose tools or generally available free
++programs which are used unmodified in performing those activities but
++which are not part of the work.  For example, Corresponding Source
++includes interface definition files associated with source files for
++the work, and the source code for shared libraries and dynamically
++linked subprograms that the work is specifically designed to require,
++such as by intimate data communication or control flow between those
++subprograms and other parts of the work.
++
++  The Corresponding Source need not include anything that users
++can regenerate automatically from other parts of the Corresponding
++Source.
++
++  The Corresponding Source for a work in source code form is that
++same work.
++
++  2. Basic Permissions.
++
++  All rights granted under this License are granted for the term of
++copyright on the Program, and are irrevocable provided the stated
++conditions are met.  This License explicitly affirms your unlimited
++permission to run the unmodified Program.  The output from running a
++covered work is covered by this License only if the output, given its
++content, constitutes a covered work.  This License acknowledges your
++rights of fair use or other equivalent, as provided by copyright law.
++
++  You may make, run and propagate covered works that you do not
++convey, without conditions so long as your license otherwise remains
++in force.  You may convey covered works to others for the sole purpose
++of having them make modifications exclusively for you, or provide you
++with facilities for running those works, provided that you comply with
++the terms of this License in conveying all material for which you do
++not control copyright.  Those thus making or running the covered works
++for you must do so exclusively on your behalf, under your direction
++and control, on terms that prohibit them from making any copies of
++your copyrighted material outside their relationship with you.
++
++  Conveying under any other circumstances is permitted solely under
++the conditions stated below.  Sublicensing is not allowed; section 10
++makes it unnecessary.
++
++  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
++
++  No covered work shall be deemed part of an effective technological
++measure under any applicable law fulfilling obligations under article
++11 of the WIPO copyright treaty adopted on 20 December 1996, or
++similar laws prohibiting or restricting circumvention of such
++measures.
++
++  When you convey a covered work, you waive any legal power to forbid
++circumvention of technological measures to the extent such circumvention
++is effected by exercising rights under this License with respect to
++the covered work, and you disclaim any intention to limit operation or
++modification of the work as a means of enforcing, against the work's
++users, your or third parties' legal rights to forbid circumvention of
++technological measures.
++
++  4. Conveying Verbatim Copies.
++
++  You may convey verbatim copies of the Program's source code as you
++receive it, in any medium, provided that you conspicuously and
++appropriately publish on each copy an appropriate copyright notice;
++keep intact all notices stating that this License and any
++non-permissive terms added in accord with section 7 apply to the code;
++keep intact all notices of the absence of any warranty; and give all
++recipients a copy of this License along with the Program.
++
++  You may charge any price or no price for each copy that you convey,
++and you may offer support or warranty protection for a fee.
++
++  5. Conveying Modified Source Versions.
++
++  You may convey a work based on the Program, or the modifications to
++produce it from the Program, in the form of source code under the
++terms of section 4, provided that you also meet all of these conditions:
++
++    a) The work must carry prominent notices stating that you modified
++    it, and giving a relevant date.
++
++    b) The work must carry prominent notices stating that it is
++    released under this License and any conditions added under section
++    7.  This requirement modifies the requirement in section 4 to
++    "keep intact all notices".
++
++    c) You must license the entire work, as a whole, under this
++    License to anyone who comes into possession of a copy.  This
++    License will therefore apply, along with any applicable section 7
++    additional terms, to the whole of the work, and all its parts,
++    regardless of how they are packaged.  This License gives no
++    permission to license the work in any other way, but it does not
++    invalidate such permission if you have separately received it.
++
++    d) If the work has interactive user interfaces, each must display
++    Appropriate Legal Notices; however, if the Program has interactive
++    interfaces that do not display Appropriate Legal Notices, your
++    work need not make them do so.
++
++  A compilation of a covered work with other separate and independent
++works, which are not by their nature extensions of the covered work,
++and which are not combined with it such as to form a larger program,
++in or on a volume of a storage or distribution medium, is called an
++"aggregate" if the compilation and its resulting copyright are not
++used to limit the access or legal rights of the compilation's users
++beyond what the individual works permit.  Inclusion of a covered work
++in an aggregate does not cause this License to apply to the other
++parts of the aggregate.
++
++  6. Conveying Non-Source Forms.
++
++  You may convey a covered work in object code form under the terms
++of sections 4 and 5, provided that you also convey the
++machine-readable Corresponding Source under the terms of this License,
++in one of these ways:
++
++    a) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by the
++    Corresponding Source fixed on a durable physical medium
++    customarily used for software interchange.
++
++    b) Convey the object code in, or embodied in, a physical product
++    (including a physical distribution medium), accompanied by a
++    written offer, valid for at least three years and valid for as
++    long as you offer spare parts or customer support for that product
++    model, to give anyone who possesses the object code either (1) a
++    copy of the Corresponding Source for all the software in the
++    product that is covered by this License, on a durable physical
++    medium customarily used for software interchange, for a price no
++    more than your reasonable cost of physically performing this
++    conveying of source, or (2) access to copy the
++    Corresponding Source from a network server at no charge.
++
++    c) Convey individual copies of the object code with a copy of the
++    written offer to provide the Corresponding Source.  This
++    alternative is allowed only occasionally and noncommercially, and
++    only if you received the object code with such an offer, in accord
++    with subsection 6b.
++
++    d) Convey the object code by offering access from a designated
++    place (gratis or for a charge), and offer equivalent access to the
++    Corresponding Source in the same way through the same place at no
++    further charge.  You need not require recipients to copy the
++    Corresponding Source along with the object code.  If the place to
++    copy the object code is a network server, the Corresponding Source
++    may be on a different server (operated by you or a third party)
++    that supports equivalent copying facilities, provided you maintain
++    clear directions next to the object code saying where to find the
++    Corresponding Source.  Regardless of what server hosts the
++    Corresponding Source, you remain obligated to ensure that it is
++    available for as long as needed to satisfy these requirements.
++
++    e) Convey the object code using peer-to-peer transmission, provided
++    you inform other peers where the object code and Corresponding
++    Source of the work are being offered to the general public at no
++    charge under subsection 6d.
++
++  A separable portion of the object code, whose source code is excluded
++from the Corresponding Source as a System Library, need not be
++included in conveying the object code work.
++
++  A "User Product" is either (1) a "consumer product", which means any
++tangible personal property which is normally used for personal, family,
++or household purposes, or (2) anything designed or sold for incorporation
++into a dwelling.  In determining whether a product is a consumer product,
++doubtful cases shall be resolved in favor of coverage.  For a particular
++product received by a particular user, "normally used" refers to a
++typical or common use of that class of product, regardless of the status
++of the particular user or of the way in which the particular user
++actually uses, or expects or is expected to use, the product.  A product
++is a consumer product regardless of whether the product has substantial
++commercial, industrial or non-consumer uses, unless such uses represent
++the only significant mode of use of the product.
++
++  "Installation Information" for a User Product means any methods,
++procedures, authorization keys, or other information required to install
++and execute modified versions of a covered work in that User Product from
++a modified version of its Corresponding Source.  The information must
++suffice to ensure that the continued functioning of the modified object
++code is in no case prevented or interfered with solely because
++modification has been made.
++
++  If you convey an object code work under this section in, or with, or
++specifically for use in, a User Product, and the conveying occurs as
++part of a transaction in which the right of possession and use of the
++User Product is transferred to the recipient in perpetuity or for a
++fixed term (regardless of how the transaction is characterized), the
++Corresponding Source conveyed under this section must be accompanied
++by the Installation Information.  But this requirement does not apply
++if neither you nor any third party retains the ability to install
++modified object code on the User Product (for example, the work has
++been installed in ROM).
++
++  The requirement to provide Installation Information does not include a
++requirement to continue to provide support service, warranty, or updates
++for a work that has been modified or installed by the recipient, or for
++the User Product in which it has been modified or installed.  Access to a
++network may be denied when the modification itself materially and
++adversely affects the operation of the network or violates the rules and
++protocols for communication across the network.
++
++  Corresponding Source conveyed, and Installation Information provided,
++in accord with this section must be in a format that is publicly
++documented (and with an implementation available to the public in
++source code form), and must require no special password or key for
++unpacking, reading or copying.
++
++  7. Additional Terms.
++
++  "Additional permissions" are terms that supplement the terms of this
++License by making exceptions from one or more of its conditions.
++Additional permissions that are applicable to the entire Program shall
++be treated as though they were included in this License, to the extent
++that they are valid under applicable law.  If additional permissions
++apply only to part of the Program, that part may be used separately
++under those permissions, but the entire Program remains governed by
++this License without regard to the additional permissions.
++
++  When you convey a copy of a covered work, you may at your option
++remove any additional permissions from that copy, or from any part of
++it.  (Additional permissions may be written to require their own
++removal in certain cases when you modify the work.)  You may place
++additional permissions on material, added by you to a covered work,
++for which you have or can give appropriate copyright permission.
++
++  Notwithstanding any other provision of this License, for material you
++add to a covered work, you may (if authorized by the copyright holders of
++that material) supplement the terms of this License with terms:
++
++    a) Disclaiming warranty or limiting liability differently from the
++    terms of sections 15 and 16 of this License; or
++
++    b) Requiring preservation of specified reasonable legal notices or
++    author attributions in that material or in the Appropriate Legal
++    Notices displayed by works containing it; or
++
++    c) Prohibiting misrepresentation of the origin of that material, or
++    requiring that modified versions of such material be marked in
++    reasonable ways as different from the original version; or
++
++    d) Limiting the use for publicity purposes of names of licensors or
++    authors of the material; or
++
++    e) Declining to grant rights under trademark law for use of some
++    trade names, trademarks, or service marks; or
++
++    f) Requiring indemnification of licensors and authors of that
++    material by anyone who conveys the material (or modified versions of
++    it) with contractual assumptions of liability to the recipient, for
++    any liability that these contractual assumptions directly impose on
++    those licensors and authors.
++
++  All other non-permissive additional terms are considered "further
++restrictions" within the meaning of section 10.  If the Program as you
++received it, or any part of it, contains a notice stating that it is
++governed by this License along with a term that is a further
++restriction, you may remove that term.  If a license document contains
++a further restriction but permits relicensing or conveying under this
++License, you may add to a covered work material governed by the terms
++of that license document, provided that the further restriction does
++not survive such relicensing or conveying.
++
++  If you add terms to a covered work in accord with this section, you
++must place, in the relevant source files, a statement of the
++additional terms that apply to those files, or a notice indicating
++where to find the applicable terms.
++
++  Additional terms, permissive or non-permissive, may be stated in the
++form of a separately written license, or stated as exceptions;
++the above requirements apply either way.
++
++  8. Termination.
++
++  You may not propagate or modify a covered work except as expressly
++provided under this License.  Any attempt otherwise to propagate or
++modify it is void, and will automatically terminate your rights under
++this License (including any patent licenses granted under the third
++paragraph of section 11).
++
++  However, if you cease all violation of this License, then your
++license from a particular copyright holder is reinstated (a)
++provisionally, unless and until the copyright holder explicitly and
++finally terminates your license, and (b) permanently, if the copyright
++holder fails to notify you of the violation by some reasonable means
++prior to 60 days after the cessation.
++
++  Moreover, your license from a particular copyright holder is
++reinstated permanently if the copyright holder notifies you of the
++violation by some reasonable means, this is the first time you have
++received notice of violation of this License (for any work) from that
++copyright holder, and you cure the violation prior to 30 days after
++your receipt of the notice.
++
++  Termination of your rights under this section does not terminate the
++licenses of parties who have received copies or rights from you under
++this License.  If your rights have been terminated and not permanently
++reinstated, you do not qualify to receive new licenses for the same
++material under section 10.
++
++  9. Acceptance Not Required for Having Copies.
++
++  You are not required to accept this License in order to receive or
++run a copy of the Program.  Ancillary propagation of a covered work
++occurring solely as a consequence of using peer-to-peer transmission
++to receive a copy likewise does not require acceptance.  However,
++nothing other than this License grants you permission to propagate or
++modify any covered work.  These actions infringe copyright if you do
++not accept this License.  Therefore, by modifying or propagating a
++covered work, you indicate your acceptance of this License to do so.
++
++  10. Automatic Licensing of Downstream Recipients.
++
++  Each time you convey a covered work, the recipient automatically
++receives a license from the original licensors, to run, modify and
++propagate that work, subject to this License.  You are not responsible
++for enforcing compliance by third parties with this License.
++
++  An "entity transaction" is a transaction transferring control of an
++organization, or substantially all assets of one, or subdividing an
++organization, or merging organizations.  If propagation of a covered
++work results from an entity transaction, each party to that
++transaction who receives a copy of the work also receives whatever
++licenses to the work the party's predecessor in interest had or could
++give under the previous paragraph, plus a right to possession of the
++Corresponding Source of the work from the predecessor in interest, if
++the predecessor has it or can get it with reasonable efforts.
++
++  You may not impose any further restrictions on the exercise of the
++rights granted or affirmed under this License.  For example, you may
++not impose a license fee, royalty, or other charge for exercise of
++rights granted under this License, and you may not initiate litigation
++(including a cross-claim or counterclaim in a lawsuit) alleging that
++any patent claim is infringed by making, using, selling, offering for
++sale, or importing the Program or any portion of it.
++
++  11. Patents.
++
++  A "contributor" is a copyright holder who authorizes use under this
++License of the Program or a work on which the Program is based.  The
++work thus licensed is called the contributor's "contributor version".
++
++  A contributor's "essential patent claims" are all patent claims
++owned or controlled by the contributor, whether already acquired or
++hereafter acquired, that would be infringed by some manner, permitted
++by this License, of making, using, or selling its contributor version,
++but do not include claims that would be infringed only as a
++consequence of further modification of the contributor version.  For
++purposes of this definition, "control" includes the right to grant
++patent sublicenses in a manner consistent with the requirements of
++this License.
++
++  Each contributor grants you a non-exclusive, worldwide, royalty-free
++patent license under the contributor's essential patent claims, to
++make, use, sell, offer for sale, import and otherwise run, modify and
++propagate the contents of its contributor version.
++
++  In the following three paragraphs, a "patent license" is any express
++agreement or commitment, however denominated, not to enforce a patent
++(such as an express permission to practice a patent or covenant not to
++sue for patent infringement).  To "grant" such a patent license to a
++party means to make such an agreement or commitment not to enforce a
++patent against the party.
++
++  If you convey a covered work, knowingly relying on a patent license,
++and the Corresponding Source of the work is not available for anyone
++to copy, free of charge and under the terms of this License, through a
++publicly available network server or other readily accessible means,
++then you must either (1) cause the Corresponding Source to be so
++available, or (2) arrange to deprive yourself of the benefit of the
++patent license for this particular work, or (3) arrange, in a manner
++consistent with the requirements of this License, to extend the patent
++license to downstream recipients.  "Knowingly relying" means you have
++actual knowledge that, but for the patent license, your conveying the
++covered work in a country, or your recipient's use of the covered work
++in a country, would infringe one or more identifiable patents in that
++country that you have reason to believe are valid.
++
++  If, pursuant to or in connection with a single transaction or
++arrangement, you convey, or propagate by procuring conveyance of, a
++covered work, and grant a patent license to some of the parties
++receiving the covered work authorizing them to use, propagate, modify
++or convey a specific copy of the covered work, then the patent license
++you grant is automatically extended to all recipients of the covered
++work and works based on it.
++
++  A patent license is "discriminatory" if it does not include within
++the scope of its coverage, prohibits the exercise of, or is
++conditioned on the non-exercise of one or more of the rights that are
++specifically granted under this License.  You may not convey a covered
++work if you are a party to an arrangement with a third party that is
++in the business of distributing software, under which you make payment
++to the third party based on the extent of your activity of conveying
++the work, and under which the third party grants, to any of the
++parties who would receive the covered work from you, a discriminatory
++patent license (a) in connection with copies of the covered work
++conveyed by you (or copies made from those copies), or (b) primarily
++for and in connection with specific products or compilations that
++contain the covered work, unless you entered into that arrangement,
++or that patent license was granted, prior to 28 March 2007.
++
++  Nothing in this License shall be construed as excluding or limiting
++any implied license or other defenses to infringement that may
++otherwise be available to you under applicable patent law.
++
++  12. No Surrender of Others' Freedom.
++
++  If conditions are imposed on you (whether by court order, agreement or
++otherwise) that contradict the conditions of this License, they do not
++excuse you from the conditions of this License.  If you cannot convey a
++covered work so as to satisfy simultaneously your obligations under this
++License and any other pertinent obligations, then as a consequence you may
++not convey it at all.  For example, if you agree to terms that obligate you
++to collect a royalty for further conveying from those to whom you convey
++the Program, the only way you could satisfy both those terms and this
++License would be to refrain entirely from conveying the Program.
++
++  13. Use with the GNU Affero General Public License.
++
++  Notwithstanding any other provision of this License, you have
++permission to link or combine any covered work with a work licensed
++under version 3 of the GNU Affero General Public License into a single
++combined work, and to convey the resulting work.  The terms of this
++License will continue to apply to the part which is the covered work,
++but the special requirements of the GNU Affero General Public License,
++section 13, concerning interaction through a network will apply to the
++combination as such.
++
++  14. Revised Versions of this License.
++
++  The Free Software Foundation may publish revised and/or new versions of
++the GNU General Public License from time to time.  Such new versions will
++be similar in spirit to the present version, but may differ in detail to
++address new problems or concerns.
++
++  Each version is given a distinguishing version number.  If the
++Program specifies that a certain numbered version of the GNU General
++Public License "or any later version" applies to it, you have the
++option of following the terms and conditions either of that numbered
++version or of any later version published by the Free Software
++Foundation.  If the Program does not specify a version number of the
++GNU General Public License, you may choose any version ever published
++by the Free Software Foundation.
++
++  If the Program specifies that a proxy can decide which future
++versions of the GNU General Public License can be used, that proxy's
++public statement of acceptance of a version permanently authorizes you
++to choose that version for the Program.
++
++  Later license versions may give you additional or different
++permissions.  However, no additional obligations are imposed on any
++author or copyright holder as a result of your choosing to follow a
++later version.
++
++  15. Disclaimer of Warranty.
++
++  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
++APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
++HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
++OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
++THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
++PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
++IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
++ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
++
++  16. Limitation of Liability.
++
++  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
++WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
++THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
++GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
++USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
++DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
++PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
++EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
++SUCH DAMAGES.
++
++  17. Interpretation of Sections 15 and 16.
++
++  If the disclaimer of warranty and limitation of liability provided
++above cannot be given local legal effect according to their terms,
++reviewing courts shall apply local law that most closely approximates
++an absolute waiver of all civil liability in connection with the
++Program, unless a warranty or assumption of liability accompanies a
++copy of the Program in return for a fee.
++
++                     END OF TERMS AND CONDITIONS
++
++            How to Apply These Terms to Your New Programs
++
++  If you develop a new program, and you want it to be of the greatest
++possible use to the public, the best way to achieve this is to make it
++free software which everyone can redistribute and change under these terms.
++
++  To do so, attach the following notices to the program.  It is safest
++to attach them to the start of each source file to most effectively
++state the exclusion of warranty; and each file should have at least
++the "copyright" line and a pointer to where the full notice is found.
++
++    <one line to give the program's name and a brief idea of what it does.>
++    Copyright (C) <year>  <name of author>
++
++    This program is free software: you can redistribute it and/or modify
++    it under the terms of the GNU General Public License as published by
++    the Free Software Foundation, either version 3 of the License, or
++    (at your option) any later version.
++
++    This program is distributed in the hope that it will be useful,
++    but WITHOUT ANY WARRANTY; without even the implied warranty of
++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++    GNU General Public License for more details.
++
++    You should have received a copy of the GNU General Public License
++    along with this program.  If not, see <https://www.gnu.org/licenses/>.
++
++Also add information on how to contact you by electronic and paper mail.
++
++  If the program does terminal interaction, make it output a short
++notice like this when it starts in an interactive mode:
++
++    <program>  Copyright (C) <year>  <name of author>
++    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
++    This is free software, and you are welcome to redistribute it
++    under certain conditions; type `show c' for details.
++
++The hypothetical commands `show w' and `show c' should show the appropriate
++parts of the General Public License.  Of course, your program's commands
++might be different; for a GUI interface, you would use an "about box".
++
++  You should also get your employer (if you work as a programmer) or school,
++if any, to sign a "copyright disclaimer" for the program, if necessary.
++For more information on this, and how to apply and follow the GNU GPL, see
++<https://www.gnu.org/licenses/>.
++
++  The GNU General Public License does not permit incorporating your program
++into proprietary programs.  If your program is a subroutine library, you
++may consider it more useful to permit linking proprietary applications with
++the library.  If this is what you want to do, use the GNU Lesser General
++Public License instead of this License.  But first, please read
++<https://www.gnu.org/licenses/why-not-lgpl.html>.
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-09 08:00:28.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-10 03:47:23.163610556 +0000
+@@ -1,42 +1,67 @@
+-# SmoothFlow 5.0.4 — Muse 二次审查说明
++# SmoothFlow 5.0.4 — Muse 第三轮综合审查说明（Patch 2）
+ 
+-## 本次改动范围
++## 审查目标
+ 
+-本包是基于 5.0.4 的静态审计候选包，不是已完成真机验证的正式新版本。未调整任何 CPU/WALT/uclamp 档位数值、轮询周期、设备门禁或 GPU/温控行为。
++本候选包基于第二轮报告的 M1–M4 进行集中修复，并处理少量有明确证据、低风险的加固项。它仍是审查包，不是已完成 OPD2513 真机验证的正式发布版。
+ 
+-### Patch 1：停止流程的 PID 文件所有权保护
++## 已处理项目
+ 
+-文件：`bin/core.sh`
+-
+-旧逻辑在 `stop_daemon()` 结束时无条件执行 `rm -f "$PIDF" "$SUPIDF"`。如果停止旧实例期间有新实例更新 PID 文件，旧停止流程可能删除新实例的记录。
+-
+-现在：
+-- 停止开始时记录 PID 文件是否存在及其首行内容。
+-- 停止流程结束时重新读取文件。
+-- 仅当文件仍存在且首行内容与本次捕获值一致时，才尝试删除。
+-- 若内容已被新实例更新，则保留新记录。
+-
+-限制：Shell 文件系统操作无法将“比较内容 + unlink”做成原子事务，因此这降低了误删风险，但不应被描述为完全消除所有极端并发竞态。Muse 请重点评估是否需要通过实例代际标识、原子 rename 协议或统一生命周期锁进一步加强。
++### M1：配置热变更后频率节点残留
++- `restore_eco_caps()` 不再用当前 `ECO_MAX*` 配置反推历史写入值；改为按 `applied.txt` 归属记录调用 `restore_one_if_owned()`。
++- `settle_min()` 先检查路径的实际写入归属；仅当当前值仍等于本模块最后写入值时才恢复基线，再按当前档位目标重新抬升。
++- 新增两项回归测试：省电档中途修改 `ECO_MAX6` 后进入日常档；游戏档中途将 `GAME_MIN0` 改为 0 后进入日常档。
++
++### M2：profile/supervisor 锁回收竞态
++- 移除 `service.sh` 自行清理 profile.lock 的独立逻辑。
++- profile 与 supervisor 锁统一使用短时 `.reap` gate 串行化残留回收；竞争者在创建主锁后再次检查 gate，避免旧锁被判死后新锁刚创建时被另一回收者误拆。
++- 回收通过将旧目录移动到唯一隔离目录后删除；只在确认属主进程不存在或启动时间不匹配时回收。
++- 空 PID 锁需超过 30 秒才回收；活 PID 但启动时间不可读取时 fail-closed。
++- `.reap` gate 若在持有期间遭 SIGKILL 留下，会导致后续锁操作 fail-closed，直至重启清理；这是为避免递归回收竞态作出的保守取舍，请第三轮重点评估是否有更好的 Android Shell 原语。
++- 新增 `tests/lock_stress.sh`：使用真实 `/proc` 和两个独立 Shell 进程，对两类锁分别进行双进程残留锁竞争测试。
++
++### M3：stop_daemon 停止结果不可靠
++- TERM 等待后仍存活的目标才尝试 KILL；KILL 后再等待并复核。
++- 若 PID 仍存在且启动时间相同/无法确认，返回非零并保留 PID 记录；僵尸态 Z/X 视为已停止。
++- `action.sh` 的 stop/off/restore、`service.sh` 启动旧实例清理及 `uninstall.sh` 均检查停止返回值。
++- stop 失败时 off/restore 不继续写恢复节点；卸载中止，不归档数据目录。
++- PID 文件采用临时文件 + `mv` 发布；supervisor 清理按 PID+启动时间比对；daemon 增加单实例自检。
++- 新增 stop 失败/成功隔离测试。
++
++### M4：许可证统一
++- 全包 SPDX 标识统一为 `GPL-3.0-only`。
++- `LICENSE` 使用完整 GPL-3.0 文本。
++- README、CHANGELOG、发布说明和检查清单同步许可证说明。
++- 此前可用的 5.0.4 源码归档实际仍含 MIT 标识；本候选包已按维护者既定决策统一为 GPL-3.0-only，发布前仍需核对全部纳入内容的授权来源。
++
++### 额外低风险加固
++- daemon 每约 60 秒重新探测 top-app cgroup；若启动时尚未就绪，后续可自动切换到 procfs 快路径，避免永久使用 dumpsys 兜底。
++- `capture()` 遇到同一路径畸形空快照行时先剔除旧行再写入，避免重复路径导致 `def_of()` 永远读到空值。
++- README 明确基线是本启动周期首次写入前采集值，不承诺等同 ROM 出厂值；外部模块接管节点后，SmoothFlow 放弃覆盖该节点。
++
++## 未修改项目
++
++- 未调整任何 ON/GAME/ECO 频率、负载、uclamp、rate-limit 数值。
++- 未修改 10 秒 daemon 主轮询周期。
++- 未改变设备身份、双 policy 拓扑、WALT 节点等 fail-closed 门禁。
++- 未自动切换 governor；不改 GPU、温控、系统分区或原生调度器。
+ 
+ ## 本地验证
+ 
+-- `sh -n bin/core.sh`：通过
+-- `sh -n tests/selftest.sh`：通过
+-- `sh tests/selftest.sh`：78 项通过，0 项失败
+-- 新增测试：旧 PID 文件可清理；PID 文件被新实例更新时保留；空 PID 文件可清理。
+-
+-这些均为隔离环境测试，不代表 OPD2513 真机运行验证。
+-
+-## 请重点复核的事项
+-
+-1. `stop_daemon()` 与 `service.sh` 并发执行时，STOP 标记和 supervisor 重启之间是否仍存在竞态。
+-2. PID 文件、supervisor.lock、profile.lock 的创建、回收、释放是否存在 PID 重用或 TOCTOU 问题。
+-3. `capture_all()` 部分失败时，逐节点 `ensure_baseline()` 和 `restore_all_locked()` 是否始终 fail-safe。
+-4. `refresh_cpu_policies()` 的拓扑判定是否足以证明 policy 覆盖完整且容量分组正确；不要仅凭“两组 policy”推断真实大小核结构。
+-5. WALT 节点权限、节点语义及频率值是否与 OPD2513 当前内核一致。通用 Linux 文档不能证明厂商节点语义。
+-6. Shell 对 Android Toybox/BusyBox 工具的依赖、退出码和信号处理是否稳健。
+-7. 10 秒 daemon 轮询、游戏识别和 dumpsys 兜底的真实开销仍需真机测量；代码注释中的估算不能作为实测结论。
++- `sh -n`：全部 Shell 脚本通过。
++- `sh tests/selftest.sh`：83 项通过，0 项失败。
++- `ROUNDS=20 sh tests/lock_stress.sh`：40 轮双进程残留锁竞争（profile 20 轮 + supervisor 20 轮）通过。
++- 尚未完成 Android mksh/Toybox 验证、真实设备安装/卸载、真实 sysfs 节点、WALT governor 语义、uclamp 量化及性能开销测量。
++
++## 第三轮请重点复核
++
++1. `.reap` gate 在 SIGKILL 遗留时的恢复策略是否可接受，是否存在可证明安全的自动恢复替代方案。
++2. M1 两个配置变更探针是否覆盖所有档位切换顺序，尤其 ECO→GAME、GAME→ECO、ON_MIN 非零。
++3. `stop_daemon()` 在 Android mksh 下对 `/proc/<pid>/cmdline` NUL 格式的身份判定；确认 PID 复用、僵尸进程和 PID 文件并发更新。
++4. supervisor/daemon 单实例自检与 supervisor lock 的交互，避免自我误判或锁泄漏。
++5. Toybox `stat -c %Y`、`mv` 目录改名、`rm -rf`、`sleep 0.2` 在目标 Android 环境的实际支持情况。
++6. 是否需要为 `tests/lock_stress.sh` 增加 Android 设备可执行模式；当前压力测试在 Linux 主机上以真实 `/proc` 执行。
++7. 复查 GPL-3.0-only 是否与所有实际纳入内容的授权来源一致；许可证选择不替代作者对版权归属的确认。
+ 
+-## 安全边界
++## 发布边界
+ 
+-本轮没有执行设备命令，没有修改真实 `/sys` 或 `/proc`，没有调整性能参数，没有进行安装或卸载测试。不要将此候选包直接视为已验证的正式发布版。
++本候选包没有在 OPD2513 真机执行命令、没有写真实 `/sys`、没有安装或卸载。83 项隔离测试与 40 轮主机双进程锁测试不等于 Android 真机验证。不要直接将此审查包作为正式安装版发布。
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-10 03:46:16.368959885 +0000
+@@ -4,7 +4,7 @@
+ 
+ - [x] `module.prop` 作者字段设为 `硕`。
+ - [x] README、CHANGELOG、安装说明和测试边界整理。
+-- [x] MIT License 文件加入仓库（公开发布前须由维护者确认版权与授权范围）。
++- [x] GPL-3.0 License 文件加入仓库（公开发布前须由维护者确认版权与授权范围）。
+ - [x] AI 辅助开发与第三方研究来源说明。
+ - [x] CONTRIBUTING、SECURITY、CODE_OF_CONDUCT 文档。
+ - [x] GitHub Actions Shell 语法与隔离测试工作流。
+@@ -13,7 +13,7 @@
+ 
+ ## 公开发布前仍需维护者确认
+ 
+-- [ ] 确认当前代码、AI 生成内容和后续人工修改可以由维护者按 MIT License 发布。
++- [ ] 确认当前代码、AI 生成内容和后续人工修改可以由维护者按 GPL-3.0 License 发布。
+ - [ ] 逐文件核对是否包含第三方复制代码、贴图、字体、商标或其它受限资源；如有，补全来源及许可证。
+ - [ ] 确认作者署名“硕”是希望公开展示的名称。
+ - [ ] 在 OPD2513 实机测试安装、升级、重启自启、日常 / 游戏 / 省电档切换、熄屏恢复和卸载恢复。
+@@ -27,4 +27,4 @@
+ 
+ ## 许可证选择说明
+ 
+-当前随包放入 MIT License 作为宽松型默认方案。MIT 允许他人修改、再分发及用于闭源衍生作品，只需保留版权和许可声明。若维护者希望衍生作品也必须继续开源，应在首次公开发布前考虑 GPL-3.0，并同步替换 LICENSE、README 和工作流说明。
++本仓库采用 GNU General Public License v3.0（GPL-3.0-only）。发布前须确认所有纳入内容均可由维护者按 GPL-3.0 授权，并保留完整许可证文本与对应 SPDX 标识。
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/PATCH2.diff /tmp/sf_batch/patch/SmoothFlow_5.0.4/PATCH2.diff
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/PATCH2.diff	1970-01-01 00:00:00.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/PATCH2.diff	2026-11-10 03:50:35.355600014 +0000
+@@ -0,0 +1,855 @@
++diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/.github/workflows/test.yml /tmp/sf_batch/patch/SmoothFlow_5.0.4/.github/workflows/test.yml
++--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/.github/workflows/test.yml	2026-11-09 05:03:06.000000000 +0000
+++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/.github/workflows/test.yml	2026-11-10 03:49:45.027714936 +0000
++@@ -16,8 +16,10 @@
++           set -euo pipefail
++           for file in action.sh post-fs-data.sh service.sh uninstall.sh \
++                       bin/core.sh bin/daemon.sh bin/supervisor.sh \
++-                      tests/selftest.sh config.example.sh scripts/package.sh; do
+++                      tests/selftest.sh tests/lock_stress.sh config.example.sh scripts/package.sh; do
++             sh -n "$file"
++           done
++       - name: Run isolated tests
++         run: sh tests/selftest.sh
+++      - name: Run dual-process lock stress tests
+++        run: sh tests/lock_stress.sh
++diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/CHANGELOG.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/CHANGELOG.md
++--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-09 05:05:26.000000000 +0000
+++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-10 03:49:58.301755465 +0000
++@@ -8,7 +8,7 @@
++ - daemon 正常退出、停止标记退出或收到终止信号时，按 PID 与启动时间双重校验清理自身 PID 文件。
++ - 状态面板对 uclamp 零值的判断使用同一规范化规则。
++ - 新增 uclamp 小数写入、原值恢复和漂移检测回归用例。
++-- 增加 MIT License、AI 辅助开发说明、贡献指南、安全策略、行为准则和 GitHub Actions 测试流程。
+++- 增加 GPL-3.0 License、AI 辅助开发说明、贡献指南、安全策略、行为准则和 GitHub Actions 测试流程。
++ - 默认调度参数、游戏规则、10 秒守护节拍不作性能性调整。
++ - 不增加 GPU、温控、分区写入；不宣称真实设备 FPS、帧时间或功耗提升。
++ 
++diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/LICENSE /tmp/sf_batch/patch/SmoothFlow_5.0.4/LICENSE
++--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/LICENSE	2026-11-09 05:03:06.000000000 +0000
+++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/LICENSE	2026-11-10 03:39:41.478453194 +0000
++@@ -1,21 +1,674 @@
++-MIT License
+++                    GNU GENERAL PUBLIC LICENSE
+++                       Version 3, 29 June 2007
++ 
++-Copyright (c) 2026 硕
+++ Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+++ Everyone is permitted to copy and distribute verbatim copies
+++ of this license document, but changing it is not allowed.
++ 
++-Permission is hereby granted, free of charge, to any person obtaining a copy
++-of this software and associated documentation files (the "Software"), to deal
++-in the Software without restriction, including without limitation the rights
++-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++-copies of the Software, and to permit persons to whom the Software is
++-furnished to do so, subject to the following conditions:
++-
++-The above copyright notice and this permission notice shall be included in all
++-copies or substantial portions of the Software.
++-
++-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++-SOFTWARE.
+++                            Preamble
+++
+++  The GNU General Public License is a free, copyleft license for
+++software and other kinds of works.
+++
+++  The licenses for most software and other practical works are designed
+++to take away your freedom to share and change the works.  By contrast,
+++the GNU General Public License is intended to guarantee your freedom to
+++share and change all versions of a program--to make sure it remains free
+++software for all its users.  We, the Free Software Foundation, use the
+++GNU General Public License for most of our software; it applies also to
+++any other work released this way by its authors.  You can apply it to
+++your programs, too.
+++
+++  When we speak of free software, we are referring to freedom, not
+++price.  Our General Public Licenses are designed to make sure that you
+++have the freedom to distribute copies of free software (and charge for
+++them if you wish), that you receive source code or can get it if you
+++want it, that you can change the software or use pieces of it in new
+++free programs, and that you know you can do these things.
+++
+++  To protect your rights, we need to prevent others from denying you
+++these rights or asking you to surrender the rights.  Therefore, you have
+++certain responsibilities if you distribute copies of the software, or if
+++you modify it: responsibilities to respect the freedom of others.
+++
+++  For example, if you distribute copies of such a program, whether
+++gratis or for a fee, you must pass on to the recipients the same
+++freedoms that you received.  You must make sure that they, too, receive
+++or can get the source code.  And you must show them these terms so they
+++know their rights.
+++
+++  Developers that use the GNU GPL protect your rights with two steps:
+++(1) assert copyright on the software, and (2) offer you this License
+++giving you legal permission to copy, distribute and/or modify it.
+++
+++  For the developers' and authors' protection, the GPL clearly explains
+++that there is no warranty for this free software.  For both users' and
+++authors' sake, the GPL requires that modified versions be marked as
+++changed, so that their problems will not be attributed erroneously to
+++authors of previous versions.
+++
+++  Some devices are designed to deny users access to install or run
+++modified versions of the software inside them, although the manufacturer
+++can do so.  This is fundamentally incompatible with the aim of
+++protecting users' freedom to change the software.  The systematic
+++pattern of such abuse occurs in the area of products for individuals to
+++use, which is precisely where it is most unacceptable.  Therefore, we
+++have designed this version of the GPL to prohibit the practice for those
+++products.  If such problems arise substantially in other domains, we
+++stand ready to extend this provision to those domains in future versions
+++of the GPL, as needed to protect the freedom of users.
+++
+++  Finally, every program is threatened constantly by software patents.
+++States should not allow patents to restrict development and use of
+++software on general-purpose computers, but in those that do, we wish to
+++avoid the special danger that patents applied to a free program could
+++make it effectively proprietary.  To prevent this, the GPL assures that
+++patents cannot be used to render the program non-free.
+++
+++  The precise terms and conditions for copying, distribution and
+++modification follow.
+++
+++                       TERMS AND CONDITIONS
+++
+++  0. Definitions.
+++
+++  "This License" refers to version 3 of the GNU General Public License.
+++
+++  "Copyright" also means copyright-like laws that apply to other kinds of
+++works, such as semiconductor masks.
+++
+++  "The Program" refers to any copyrightable work licensed under this
+++License.  Each licensee is addressed as "you".  "Licensees" and
+++"recipients" may be individuals or organizations.
+++
+++  To "modify" a work means to copy from or adapt all or part of the work
+++in a fashion requiring copyright permission, other than the making of an
+++exact copy.  The resulting work is called a "modified version" of the
+++earlier work or a work "based on" the earlier work.
+++
+++  A "covered work" means either the unmodified Program or a work based
+++on the Program.
+++
+++  To "propagate" a work means to do anything with it that, without
+++permission, would make you directly or secondarily liable for
+++infringement under applicable copyright law, except executing it on a
+++computer or modifying a private copy.  Propagation includes copying,
+++distribution (with or without modification), making available to the
+++public, and in some countries other activities as well.
+++
+++  To "convey" a work means any kind of propagation that enables other
+++parties to make or receive copies.  Mere interaction with a user through
+++a computer network, with no transfer of a copy, is not conveying.
+++
+++  An interactive user interface displays "Appropriate Legal Notices"
+++to the extent that it includes a convenient and prominently visible
+++feature that (1) displays an appropriate copyright notice, and (2)
+++tells the user that there is no warranty for the work (except to the
+++extent that warranties are provided), that licensees may convey the
+++work under this License, and how to view a copy of this License.  If
+++the interface presents a list of user commands or options, such as a
+++menu, a prominent item in the list meets this criterion.
+++
+++  1. Source Code.
+++
+++  The "source code" for a work means the preferred form of the work
+++for making modifications to it.  "Object code" means any non-source
+++form of a work.
+++
+++  A "Standard Interface" means an interface that either is an official
+++standard defined by a recognized standards body, or, in the case of
+++interfaces specified for a particular programming language, one that
+++is widely used among developers working in that language.
+++
+++  The "System Libraries" of an executable work include anything, other
+++than the work as a whole, that (a) is included in the normal form of
+++packaging a Major Component, but which is not part of that Major
+++Component, and (b) serves only to enable use of the work with that
+++Major Component, or to implement a Standard Interface for which an
+++implementation is available to the public in source code form.  A
+++"Major Component", in this context, means a major essential component
+++(kernel, window system, and so on) of the specific operating system
+++(if any) on which the executable work runs, or a compiler used to
+++produce the work, or an object code interpreter used to run it.
+++
+++  The "Corresponding Source" for a work in object code form means all
+++the source code needed to generate, install, and (for an executable
+++work) run the object code and to modify the work, including scripts to
+++control those activities.  However, it does not include the work's
+++System Libraries, or general-purpose tools or generally available free
+++programs which are used unmodified in performing those activities but
+++which are not part of the work.  For example, Corresponding Source
+++includes interface definition files associated with source files for
+++the work, and the source code for shared libraries and dynamically
+++linked subprograms that the work is specifically designed to require,
+++such as by intimate data communication or control flow between those
+++subprograms and other parts of the work.
+++
+++  The Corresponding Source need not include anything that users
+++can regenerate automatically from other parts of the Corresponding
+++Source.
+++
+++  The Corresponding Source for a work in source code form is that
+++same work.
+++
+++  2. Basic Permissions.
+++
+++  All rights granted under this License are granted for the term of
+++copyright on the Program, and are irrevocable provided the stated
+++conditions are met.  This License explicitly affirms your unlimited
+++permission to run the unmodified Program.  The output from running a
+++covered work is covered by this License only if the output, given its
+++content, constitutes a covered work.  This License acknowledges your
+++rights of fair use or other equivalent, as provided by copyright law.
+++
+++  You may make, run and propagate covered works that you do not
+++convey, without conditions so long as your license otherwise remains
+++in force.  You may convey covered works to others for the sole purpose
+++of having them make modifications exclusively for you, or provide you
+++with facilities for running those works, provided that you comply with
+++the terms of this License in conveying all material for which you do
+++not control copyright.  Those thus making or running the covered works
+++for you must do so exclusively on your behalf, under your direction
+++and control, on terms that prohibit them from making any copies of
+++your copyrighted material outside their relationship with you.
+++
+++  Conveying under any other circumstances is permitted solely under
+++the conditions stated below.  Sublicensing is not allowed; section 10
+++makes it unnecessary.
+++
+++  3. Protecting Users' Legal Rights From Anti-Circumvention Law.
+++
+++  No covered work shall be deemed part of an effective technological
+++measure under any applicable law fulfilling obligations under article
+++11 of the WIPO copyright treaty adopted on 20 December 1996, or
+++similar laws prohibiting or restricting circumvention of such
+++measures.
+++
+++  When you convey a covered work, you waive any legal power to forbid
+++circumvention of technological measures to the extent such circumvention
+++is effected by exercising rights under this License with respect to
+++the covered work, and you disclaim any intention to limit operation or
+++modification of the work as a means of enforcing, against the work's
+++users, your or third parties' legal rights to forbid circumvention of
+++technological measures.
+++
+++  4. Conveying Verbatim Copies.
+++
+++  You may convey verbatim copies of the Program's source code as you
+++receive it, in any medium, provided that you conspicuously and
+++appropriately publish on each copy an appropriate copyright notice;
+++keep intact all notices stating that this License and any
+++non-permissive terms added in accord with section 7 apply to the code;
+++keep intact all notices of the absence of any warranty; and give all
+++recipients a copy of this License along with the Program.
+++
+++  You may charge any price or no price for each copy that you convey,
+++and you may offer support or warranty protection for a fee.
+++
+++  5. Conveying Modified Source Versions.
+++
+++  You may convey a work based on the Program, or the modifications to
+++produce it from the Program, in the form of source code under the
+++terms of section 4, provided that you also meet all of these conditions:
+++
+++    a) The work must carry prominent notices stating that you modified
+++    it, and giving a relevant date.
+++
+++    b) The work must carry prominent notices stating that it is
+++    released under this License and any conditions added under section
+++    7.  This requirement modifies the requirement in section 4 to
+++    "keep intact all notices".
+++
+++    c) You must license the entire work, as a whole, under this
+++    License to anyone who comes into possession of a copy.  This
+++    License will therefore apply, along with any applicable section 7
+++    additional terms, to the whole of the work, and all its parts,
+++    regardless of how they are packaged.  This License gives no
+++    permission to license the work in any other way, but it does not
+++    invalidate such permission if you have separately received it.
+++
+++    d) If the work has interactive user interfaces, each must display
+++    Appropriate Legal Notices; however, if the Program has interactive
+++    interfaces that do not display Appropriate Legal Notices, your
+++    work need not make them do so.
+++
+++  A compilation of a covered work with other separate and independent
+++works, which are not by their nature extensions of the covered work,
+++and which are not combined with it such as to form a larger program,
+++in or on a volume of a storage or distribution medium, is called an
+++"aggregate" if the compilation and its resulting copyright are not
+++used to limit the access or legal rights of the compilation's users
+++beyond what the individual works permit.  Inclusion of a covered work
+++in an aggregate does not cause this License to apply to the other
+++parts of the aggregate.
+++
+++  6. Conveying Non-Source Forms.
+++
+++  You may convey a covered work in object code form under the terms
+++of sections 4 and 5, provided that you also convey the
+++machine-readable Corresponding Source under the terms of this License,
+++in one of these ways:
+++
+++    a) Convey the object code in, or embodied in, a physical product
+++    (including a physical distribution medium), accompanied by the
+++    Corresponding Source fixed on a durable physical medium
+++    customarily used for software interchange.
+++
+++    b) Convey the object code in, or embodied in, a physical product
+++    (including a physical distribution medium), accompanied by a
+++    written offer, valid for at least three years and valid for as
+++    long as you offer spare parts or customer support for that product
+++    model, to give anyone who possesses the object code either (1) a
+++    copy of the Corresponding Source for all the software in the
+++    product that is covered by this License, on a durable physical
+++    medium customarily used for software interchange, for a price no
+++    more than your reasonable cost of physically performing this
+++    conveying of source, or (2) access to copy the
+++    Corresponding Source from a network server at no charge.
+++
+++    c) Convey individual copies of the object code with a copy of the
+++    written offer to provide the Corresponding Source.  This
+++    alternative is allowed only occasionally and noncommercially, and
+++    only if you received the object code with such an offer, in accord
+++    with subsection 6b.
+++
+++    d) Convey the object code by offering access from a designated
+++    place (gratis or for a charge), and offer equivalent access to the
+++    Corresponding Source in the same way through the same place at no
+++    further charge.  You need not require recipients to copy the
+++    Corresponding Source along with the object code.  If the place to
+++    copy the object code is a network server, the Corresponding Source
+++    may be on a different server (operated by you or a third party)
+++    that supports equivalent copying facilities, provided you maintain
+++    clear directions next to the object code saying where to find the
+++    Corresponding Source.  Regardless of what server hosts the
+++    Corresponding Source, you remain obligated to ensure that it is
+++    available for as long as needed to satisfy these requirements.
+++
+++    e) Convey the object code using peer-to-peer transmission, provided
+++    you inform other peers where the object code and Corresponding
+++    Source of the work are being offered to the general public at no
+++    charge under subsection 6d.
+++
+++  A separable portion of the object code, whose source code is excluded
+++from the Corresponding Source as a System Library, need not be
+++included in conveying the object code work.
+++
+++  A "User Product" is either (1) a "consumer product", which means any
+++tangible personal property which is normally used for personal, family,
+++or household purposes, or (2) anything designed or sold for incorporation
+++into a dwelling.  In determining whether a product is a consumer product,
+++doubtful cases shall be resolved in favor of coverage.  For a particular
+++product received by a particular user, "normally used" refers to a
+++typical or common use of that class of product, regardless of the status
+++of the particular user or of the way in which the particular user
+++actually uses, or expects or is expected to use, the product.  A product
+++is a consumer product regardless of whether the product has substantial
+++commercial, industrial or non-consumer uses, unless such uses represent
+++the only significant mode of use of the product.
+++
+++  "Installation Information" for a User Product means any methods,
+++procedures, authorization keys, or other information required to install
+++and execute modified versions of a covered work in that User Product from
+++a modified version of its Corresponding Source.  The information must
+++suffice to ensure that the continued functioning of the modified object
+++code is in no case prevented or interfered with solely because
+++modification has been made.
+++
+++  If you convey an object code work under this section in, or with, or
+++specifically for use in, a User Product, and the conveying occurs as
+++part of a transaction in which the right of possession and use of the
+++User Product is transferred to the recipient in perpetuity or for a
+++fixed term (regardless of how the transaction is characterized), the
+++Corresponding Source conveyed under this section must be accompanied
+++by the Installation Information.  But this requirement does not apply
+++if neither you nor any third party retains the ability to install
+++modified object code on the User Product (for example, the work has
+++been installed in ROM).
+++
+++  The requirement to provide Installation Information does not include a
+++requirement to continue to provide support service, warranty, or updates
+++for a work that has been modified or installed by the recipient, or for
+++the User Product in which it has been modified or installed.  Access to a
+++network may be denied when the modification itself materially and
+++adversely affects the operation of the network or violates the rules and
+++protocols for communication across the network.
+++
+++  Corresponding Source conveyed, and Installation Information provided,
+++in accord with this section must be in a format that is publicly
+++documented (and with an implementation available to the public in
+++source code form), and must require no special password or key for
+++unpacking, reading or copying.
+++
+++  7. Additional Terms.
+++
+++  "Additional permissions" are terms that supplement the terms of this
+++License by making exceptions from one or more of its conditions.
+++Additional permissions that are applicable to the entire Program shall
+++be treated as though they were included in this License, to the extent
+++that they are valid under applicable law.  If additional permissions
+++apply only to part of the Program, that part may be used separately
+++under those permissions, but the entire Program remains governed by
+++this License without regard to the additional permissions.
+++
+++  When you convey a copy of a covered work, you may at your option
+++remove any additional permissions from that copy, or from any part of
+++it.  (Additional permissions may be written to require their own
+++removal in certain cases when you modify the work.)  You may place
+++additional permissions on material, added by you to a covered work,
+++for which you have or can give appropriate copyright permission.
+++
+++  Notwithstanding any other provision of this License, for material you
+++add to a covered work, you may (if authorized by the copyright holders of
+++that material) supplement the terms of this License with terms:
+++
+++    a) Disclaiming warranty or limiting liability differently from the
+++    terms of sections 15 and 16 of this License; or
+++
+++    b) Requiring preservation of specified reasonable legal notices or
+++    author attributions in that material or in the Appropriate Legal
+++    Notices displayed by works containing it; or
+++
+++    c) Prohibiting misrepresentation of the origin of that material, or
+++    requiring that modified versions of such material be marked in
+++    reasonable ways as different from the original version; or
+++
+++    d) Limiting the use for publicity purposes of names of licensors or
+++    authors of the material; or
+++
+++    e) Declining to grant rights under trademark law for use of some
+++    trade names, trademarks, or service marks; or
+++
+++    f) Requiring indemnification of licensors and authors of that
+++    material by anyone who conveys the material (or modified versions of
+++    it) with contractual assumptions of liability to the recipient, for
+++    any liability that these contractual assumptions directly impose on
+++    those licensors and authors.
+++
+++  All other non-permissive additional terms are considered "further
+++restrictions" within the meaning of section 10.  If the Program as you
+++received it, or any part of it, contains a notice stating that it is
+++governed by this License along with a term that is a further
+++restriction, you may remove that term.  If a license document contains
+++a further restriction but permits relicensing or conveying under this
+++License, you may add to a covered work material governed by the terms
+++of that license document, provided that the further restriction does
+++not survive such relicensing or conveying.
+++
+++  If you add terms to a covered work in accord with this section, you
+++must place, in the relevant source files, a statement of the
+++additional terms that apply to those files, or a notice indicating
+++where to find the applicable terms.
+++
+++  Additional terms, permissive or non-permissive, may be stated in the
+++form of a separately written license, or stated as exceptions;
+++the above requirements apply either way.
+++
+++  8. Termination.
+++
+++  You may not propagate or modify a covered work except as expressly
+++provided under this License.  Any attempt otherwise to propagate or
+++modify it is void, and will automatically terminate your rights under
+++this License (including any patent licenses granted under the third
+++paragraph of section 11).
+++
+++  However, if you cease all violation of this License, then your
+++license from a particular copyright holder is reinstated (a)
+++provisionally, unless and until the copyright holder explicitly and
+++finally terminates your license, and (b) permanently, if the copyright
+++holder fails to notify you of the violation by some reasonable means
+++prior to 60 days after the cessation.
+++
+++  Moreover, your license from a particular copyright holder is
+++reinstated permanently if the copyright holder notifies you of the
+++violation by some reasonable means, this is the first time you have
+++received notice of violation of this License (for any work) from that
+++copyright holder, and you cure the violation prior to 30 days after
+++your receipt of the notice.
+++
+++  Termination of your rights under this section does not terminate the
+++licenses of parties who have received copies or rights from you under
+++this License.  If your rights have been terminated and not permanently
+++reinstated, you do not qualify to receive new licenses for the same
+++material under section 10.
+++
+++  9. Acceptance Not Required for Having Copies.
+++
+++  You are not required to accept this License in order to receive or
+++run a copy of the Program.  Ancillary propagation of a covered work
+++occurring solely as a consequence of using peer-to-peer transmission
+++to receive a copy likewise does not require acceptance.  However,
+++nothing other than this License grants you permission to propagate or
+++modify any covered work.  These actions infringe copyright if you do
+++not accept this License.  Therefore, by modifying or propagating a
+++covered work, you indicate your acceptance of this License to do so.
+++
+++  10. Automatic Licensing of Downstream Recipients.
+++
+++  Each time you convey a covered work, the recipient automatically
+++receives a license from the original licensors, to run, modify and
+++propagate that work, subject to this License.  You are not responsible
+++for enforcing compliance by third parties with this License.
+++
+++  An "entity transaction" is a transaction transferring control of an
+++organization, or substantially all assets of one, or subdividing an
+++organization, or merging organizations.  If propagation of a covered
+++work results from an entity transaction, each party to that
+++transaction who receives a copy of the work also receives whatever
+++licenses to the work the party's predecessor in interest had or could
+++give under the previous paragraph, plus a right to possession of the
+++Corresponding Source of the work from the predecessor in interest, if
+++the predecessor has it or can get it with reasonable efforts.
+++
+++  You may not impose any further restrictions on the exercise of the
+++rights granted or affirmed under this License.  For example, you may
+++not impose a license fee, royalty, or other charge for exercise of
+++rights granted under this License, and you may not initiate litigation
+++(including a cross-claim or counterclaim in a lawsuit) alleging that
+++any patent claim is infringed by making, using, selling, offering for
+++sale, or importing the Program or any portion of it.
+++
+++  11. Patents.
+++
+++  A "contributor" is a copyright holder who authorizes use under this
+++License of the Program or a work on which the Program is based.  The
+++work thus licensed is called the contributor's "contributor version".
+++
+++  A contributor's "essential patent claims" are all patent claims
+++owned or controlled by the contributor, whether already acquired or
+++hereafter acquired, that would be infringed by some manner, permitted
+++by this License, of making, using, or selling its contributor version,
+++but do not include claims that would be infringed only as a
+++consequence of further modification of the contributor version.  For
+++purposes of this definition, "control" includes the right to grant
+++patent sublicenses in a manner consistent with the requirements of
+++this License.
+++
+++  Each contributor grants you a non-exclusive, worldwide, royalty-free
+++patent license under the contributor's essential patent claims, to
+++make, use, sell, offer for sale, import and otherwise run, modify and
+++propagate the contents of its contributor version.
+++
+++  In the following three paragraphs, a "patent license" is any express
+++agreement or commitment, however denominated, not to enforce a patent
+++(such as an express permission to practice a patent or covenant not to
+++sue for patent infringement).  To "grant" such a patent license to a
+++party means to make such an agreement or commitment not to enforce a
+++patent against the party.
+++
+++  If you convey a covered work, knowingly relying on a patent license,
+++and the Corresponding Source of the work is not available for anyone
+++to copy, free of charge and under the terms of this License, through a
+++publicly available network server or other readily accessible means,
+++then you must either (1) cause the Corresponding Source to be so
+++available, or (2) arrange to deprive yourself of the benefit of the
+++patent license for this particular work, or (3) arrange, in a manner
+++consistent with the requirements of this License, to extend the patent
+++license to downstream recipients.  "Knowingly relying" means you have
+++actual knowledge that, but for the patent license, your conveying the
+++covered work in a country, or your recipient's use of the covered work
+++in a country, would infringe one or more identifiable patents in that
+++country that you have reason to believe are valid.
+++
+++  If, pursuant to or in connection with a single transaction or
+++arrangement, you convey, or propagate by procuring conveyance of, a
+++covered work, and grant a patent license to some of the parties
+++receiving the covered work authorizing them to use, propagate, modify
+++or convey a specific copy of the covered work, then the patent license
+++you grant is automatically extended to all recipients of the covered
+++work and works based on it.
+++
+++  A patent license is "discriminatory" if it does not include within
+++the scope of its coverage, prohibits the exercise of, or is
+++conditioned on the non-exercise of one or more of the rights that are
+++specifically granted under this License.  You may not convey a covered
+++work if you are a party to an arrangement with a third party that is
+++in the business of distributing software, under which you make payment
+++to the third party based on the extent of your activity of conveying
+++the work, and under which the third party grants, to any of the
+++parties who would receive the covered work from you, a discriminatory
+++patent license (a) in connection with copies of the covered work
+++conveyed by you (or copies made from those copies), or (b) primarily
+++for and in connection with specific products or compilations that
+++contain the covered work, unless you entered into that arrangement,
+++or that patent license was granted, prior to 28 March 2007.
+++
+++  Nothing in this License shall be construed as excluding or limiting
+++any implied license or other defenses to infringement that may
+++otherwise be available to you under applicable patent law.
+++
+++  12. No Surrender of Others' Freedom.
+++
+++  If conditions are imposed on you (whether by court order, agreement or
+++otherwise) that contradict the conditions of this License, they do not
+++excuse you from the conditions of this License.  If you cannot convey a
+++covered work so as to satisfy simultaneously your obligations under this
+++License and any other pertinent obligations, then as a consequence you may
+++not convey it at all.  For example, if you agree to terms that obligate you
+++to collect a royalty for further conveying from those to whom you convey
+++the Program, the only way you could satisfy both those terms and this
+++License would be to refrain entirely from conveying the Program.
+++
+++  13. Use with the GNU Affero General Public License.
+++
+++  Notwithstanding any other provision of this License, you have
+++permission to link or combine any covered work with a work licensed
+++under version 3 of the GNU Affero General Public License into a single
+++combined work, and to convey the resulting work.  The terms of this
+++License will continue to apply to the part which is the covered work,
+++but the special requirements of the GNU Affero General Public License,
+++section 13, concerning interaction through a network will apply to the
+++combination as such.
+++
+++  14. Revised Versions of this License.
+++
+++  The Free Software Foundation may publish revised and/or new versions of
+++the GNU General Public License from time to time.  Such new versions will
+++be similar in spirit to the present version, but may differ in detail to
+++address new problems or concerns.
+++
+++  Each version is given a distinguishing version number.  If the
+++Program specifies that a certain numbered version of the GNU General
+++Public License "or any later version" applies to it, you have the
+++option of following the terms and conditions either of that numbered
+++version or of any later version published by the Free Software
+++Foundation.  If the Program does not specify a version number of the
+++GNU General Public License, you may choose any version ever published
+++by the Free Software Foundation.
+++
+++  If the Program specifies that a proxy can decide which future
+++versions of the GNU General Public License can be used, that proxy's
+++public statement of acceptance of a version permanently authorizes you
+++to choose that version for the Program.
+++
+++  Later license versions may give you additional or different
+++permissions.  However, no additional obligations are imposed on any
+++author or copyright holder as a result of your choosing to follow a
+++later version.
+++
+++  15. Disclaimer of Warranty.
+++
+++  THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY
+++APPLICABLE LAW.  EXCEPT WHEN OTHERWISE STATED IN WRITING THE COPYRIGHT
+++HOLDERS AND/OR OTHER PARTIES PROVIDE THE PROGRAM "AS IS" WITHOUT WARRANTY
+++OF ANY KIND, EITHER EXPRESSED OR IMPLIED, INCLUDING, BUT NOT LIMITED TO,
+++THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+++PURPOSE.  THE ENTIRE RISK AS TO THE QUALITY AND PERFORMANCE OF THE PROGRAM
+++IS WITH YOU.  SHOULD THE PROGRAM PROVE DEFECTIVE, YOU ASSUME THE COST OF
+++ALL NECESSARY SERVICING, REPAIR OR CORRECTION.
+++
+++  16. Limitation of Liability.
+++
+++  IN NO EVENT UNLESS REQUIRED BY APPLICABLE LAW OR AGREED TO IN WRITING
+++WILL ANY COPYRIGHT HOLDER, OR ANY OTHER PARTY WHO MODIFIES AND/OR CONVEYS
+++THE PROGRAM AS PERMITTED ABOVE, BE LIABLE TO YOU FOR DAMAGES, INCLUDING ANY
+++GENERAL, SPECIAL, INCIDENTAL OR CONSEQUENTIAL DAMAGES ARISING OUT OF THE
+++USE OR INABILITY TO USE THE PROGRAM (INCLUDING BUT NOT LIMITED TO LOSS OF
+++DATA OR DATA BEING RENDERED INACCURATE OR LOSSES SUSTAINED BY YOU OR THIRD
+++PARTIES OR A FAILURE OF THE PROGRAM TO OPERATE WITH ANY OTHER PROGRAMS),
+++EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE POSSIBILITY OF
+++SUCH DAMAGES.
+++
+++  17. Interpretation of Sections 15 and 16.
+++
+++  If the disclaimer of warranty and limitation of liability provided
+++above cannot be given local legal effect according to their terms,
+++reviewing courts shall apply local law that most closely approximates
+++an absolute waiver of all civil liability in connection with the
+++Program, unless a warranty or assumption of liability accompanies a
+++copy of the Program in return for a fee.
+++
+++                     END OF TERMS AND CONDITIONS
+++
+++            How to Apply These Terms to Your New Programs
+++
+++  If you develop a new program, and you want it to be of the greatest
+++possible use to the public, the best way to achieve this is to make it
+++free software which everyone can redistribute and change under these terms.
+++
+++  To do so, attach the following notices to the program.  It is safest
+++to attach them to the start of each source file to most effectively
+++state the exclusion of warranty; and each file should have at least
+++the "copyright" line and a pointer to where the full notice is found.
+++
+++    <one line to give the program's name and a brief idea of what it does.>
+++    Copyright (C) <year>  <name of author>
+++
+++    This program is free software: you can redistribute it and/or modify
+++    it under the terms of the GNU General Public License as published by
+++    the Free Software Foundation, either version 3 of the License, or
+++    (at your option) any later version.
+++
+++    This program is distributed in the hope that it will be useful,
+++    but WITHOUT ANY WARRANTY; without even the implied warranty of
+++    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+++    GNU General Public License for more details.
+++
+++    You should have received a copy of the GNU General Public License
+++    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+++
+++Also add information on how to contact you by electronic and paper mail.
+++
+++  If the program does terminal interaction, make it output a short
+++notice like this when it starts in an interactive mode:
+++
+++    <program>  Copyright (C) <year>  <name of author>
+++    This program comes with ABSOLUTELY NO WARRANTY; for details type `show w'.
+++    This is free software, and you are welcome to redistribute it
+++    under certain conditions; type `show c' for details.
+++
+++The hypothetical commands `show w' and `show c' should show the appropriate
+++parts of the General Public License.  Of course, your program's commands
+++might be different; for a GUI interface, you would use an "about box".
+++
+++  You should also get your employer (if you work as a programmer) or school,
+++if any, to sign a "copyright disclaimer" for the program, if necessary.
+++For more information on this, and how to apply and follow the GNU GPL, see
+++<https://www.gnu.org/licenses/>.
+++
+++  The GNU General Public License does not permit incorporating your program
+++into proprietary programs.  If your program is a subroutine library, you
+++may consider it more useful to permit linking proprietary applications with
+++the library.  If this is what you want to do, use the GNU Lesser General
+++Public License instead of this License.  But first, please read
+++<https://www.gnu.org/licenses/why-not-lgpl.html>.
++diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md
++--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-09 08:00:28.000000000 +0000
+++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-10 03:47:23.163610556 +0000
++@@ -1,42 +1,67 @@
++-# SmoothFlow 5.0.4 — Muse 二次审查说明
+++# SmoothFlow 5.0.4 — Muse 第三轮综合审查说明（Patch 2）
++ 
++-## 本次改动范围
+++## 审查目标
++ 
++-本包是基于 5.0.4 的静态审计候选包，不是已完成真机验证的正式新版本。未调整任何 CPU/WALT/uclamp 档位数值、轮询周期、设备门禁或 GPU/温控行为。
+++本候选包基于第二轮报告的 M1–M4 进行集中修复，并处理少量有明确证据、低风险的加固项。它仍是审查包，不是已完成 OPD2513 真机验证的正式发布版。
++ 
++-### Patch 1：停止流程的 PID 文件所有权保护
+++## 已处理项目
++ 
++-文件：`bin/core.sh`
++-
++-旧逻辑在 `stop_daemon()` 结束时无条件执行 `rm -f "$PIDF" "$SUPIDF"`。如果停止旧实例期间有新实例更新 PID 文件，旧停止流程可能删除新实例的记录。
++-
++-现在：
++-- 停止开始时记录 PID 文件是否存在及其首行内容。
++-- 停止流程结束时重新读取文件。
++-- 仅当文件仍存在且首行内容与本次捕获值一致时，才尝试删除。
++-- 若内容已被新实例更新，则保留新记录。
++-
++-限制：Shell 文件系统操作无法将“比较内容 + unlink”做成原子事务，因此这降低了误删风险，但不应被描述为完全消除所有极端并发竞态。Muse 请重点评估是否需要通过实例代际标识、原子 rename 协议或统一生命周期锁进一步加强。
+++### M1：配置热变更后频率节点残留
+++- `restore_eco_caps()` 不再用当前 `ECO_MAX*` 配置反推历史写入值；改为按 `applied.txt` 归属记录调用 `restore_one_if_owned()`。
+++- `settle_min()` 先检查路径的实际写入归属；仅当当前值仍等于本模块最后写入值时才恢复基线，再按当前档位目标重新抬升。
+++- 新增两项回归测试：省电档中途修改 `ECO_MAX6` 后进入日常档；游戏档中途将 `GAME_MIN0` 改为 0 后进入日常档。
+++
+++### M2：profile/supervisor 锁回收竞态
+++- 移除 `service.sh` 自行清理 profile.lock 的独立逻辑。
+++- profile 与 supervisor 锁统一使用短时 `.reap` gate 串行化残留回收；竞争者在创建主锁后再次检查 gate，避免旧锁被判死后新锁刚创建时被另一回收者误拆。
+++- 回收通过将旧目录移动到唯一隔离目录后删除；只在确认属主进程不存在或启动时间不匹配时回收。
+++- 空 PID 锁需超过 30 秒才回收；活 PID 但启动时间不可读取时 fail-closed。
+++- `.reap` gate 若在持有期间遭 SIGKILL 留下，会导致后续锁操作 fail-closed，直至重启清理；这是为避免递归回收竞态作出的保守取舍，请第三轮重点评估是否有更好的 Android Shell 原语。
+++- 新增 `tests/lock_stress.sh`：使用真实 `/proc` 和两个独立 Shell 进程，对两类锁分别进行双进程残留锁竞争测试。
+++
+++### M3：stop_daemon 停止结果不可靠
+++- TERM 等待后仍存活的目标才尝试 KILL；KILL 后再等待并复核。
+++- 若 PID 仍存在且启动时间相同/无法确认，返回非零并保留 PID 记录；僵尸态 Z/X 视为已停止。
+++- `action.sh` 的 stop/off/restore、`service.sh` 启动旧实例清理及 `uninstall.sh` 均检查停止返回值。
+++- stop 失败时 off/restore 不继续写恢复节点；卸载中止，不归档数据目录。
+++- PID 文件采用临时文件 + `mv` 发布；supervisor 清理按 PID+启动时间比对；daemon 增加单实例自检。
+++- 新增 stop 失败/成功隔离测试。
+++
+++### M4：许可证统一
+++- 全包 SPDX 标识统一为 `GPL-3.0-only`。
+++- `LICENSE` 使用完整 GPL-3.0 文本。
+++- README、CHANGELOG、发布说明和检查清单同步许可证说明。
+++- 此前可用的 5.0.4 源码归档实际仍含 MIT 标识；本候选包已按维护者既定决策统一为 GPL-3.0-only，发布前仍需核对全部纳入内容的授权来源。
+++
+++### 额外低风险加固
+++- daemon 每约 60 秒重新探测 top-app cgroup；若启动时尚未就绪，后续可自动切换到 procfs 快路径，避免永久使用 dumpsys 兜底。
+++- `capture()` 遇到同一路径畸形空快照行时先剔除旧行再写入，避免重复路径导致 `def_of()` 永远读到空值。
+++- README 明确基线是本启动周期首次写入前采集值，不承诺等同 ROM 出厂值；外部模块接管节点后，SmoothFlow 放弃覆盖该节点。
+++
+++## 未修改项目
+++
+++- 未调整任何 ON/GAME/ECO 频率、负载、uclamp、rate-limit 数值。
+++- 未修改 10 秒 daemon 主轮询周期。
+++- 未改变设备身份、双 policy 拓扑、WALT 节点等 fail-closed 门禁。
+++- 未自动切换 governor；不改 GPU、温控、系统分区或原生调度器。
++ 
++ ## 本地验证
++ 
++-- `sh -n bin/core.sh`：通过
++-- `sh -n tests/selftest.sh`：通过
++-- `sh tests/selftest.sh`：78 项通过，0 项失败
++-- 新增测试：旧 PID 文件可清理；PID 文件被新实例更新时保留；空 PID 文件可清理。
++-
++-这些均为隔离环境测试，不代表 OPD2513 真机运行验证。
++-
++-## 请重点复核的事项
++-
++-1. `stop_daemon()` 与 `service.sh` 并发执行时，STOP 标记和 supervisor 重启之间是否仍存在竞态。
++-2. PID 文件、supervisor.lock、profile.lock 的创建、回收、释放是否存在 PID 重用或 TOCTOU 问题。
++-3. `capture_all()` 部分失败时，逐节点 `ensure_baseline()` 和 `restore_all_locked()` 是否始终 fail-safe。
++-4. `refresh_cpu_policies()` 的拓扑判定是否足以证明 policy 覆盖完整且容量分组正确；不要仅凭“两组 policy”推断真实大小核结构。
++-5. WALT 节点权限、节点语义及频率值是否与 OPD2513 当前内核一致。通用 Linux 文档不能证明厂商节点语义。
++-6. Shell 对 Android Toybox/BusyBox 工具的依赖、退出码和信号处理是否稳健。
++-7. 10 秒 daemon 轮询、游戏识别和 dumpsys 兜底的真实开销仍需真机测量；代码注释中的估算不能作为实测结论。
+++- `sh -n`：全部 Shell 脚本通过。
+++- `sh tests/selftest.sh`：83 项通过，0 项失败。
+++- `ROUNDS=20 sh tests/lock_stress.sh`：40 轮双进程残留锁竞争（profile 20 轮 + supervisor 20 轮）通过。
+++- 尚未完成 Android mksh/Toybox 验证、真实设备安装/卸载、真实 sysfs 节点、WALT governor 语义、uclamp 量化及性能开销测量。
+++
+++## 第三轮请重点复核
+++
+++1. `.reap` gate 在 SIGKILL 遗留时的恢复策略是否可接受，是否存在可证明安全的自动恢复替代方案。
+++2. M1 两个配置变更探针是否覆盖所有档位切换顺序，尤其 ECO→GAME、GAME→ECO、ON_MIN 非零。
+++3. `stop_daemon()` 在 Android mksh 下对 `/proc/<pid>/cmdline` NUL 格式的身份判定；确认 PID 复用、僵尸进程和 PID 文件并发更新。
+++4. supervisor/daemon 单实例自检与 supervisor lock 的交互，避免自我误判或锁泄漏。
+++5. Toybox `stat -c %Y`、`mv` 目录改名、`rm -rf`、`sleep 0.2` 在目标 Android 环境的实际支持情况。
+++6. 是否需要为 `tests/lock_stress.sh` 增加 Android 设备可执行模式；当前压力测试在 Linux 主机上以真实 `/proc` 执行。
+++7. 复查 GPL-3.0-only 是否与所有实际纳入内容的授权来源一致；许可证选择不替代作者对版权归属的确认。
++ 
++-## 安全边界
+++## 发布边界
++ 
++-本轮没有执行设备命令，没有修改真实 `/sys` 或 `/proc`，没有调整性能参数，没有进行安装或卸载测试。不要将此候选包直接视为已验证的正式发布版。
+++本候选包没有在 OPD2513 真机执行命令、没有写真实 `/sys`、没有安装或卸载。83 项隔离测试与 40 轮主机双进程锁测试不等于 Android 真机验证。不要直接将此审查包作为正式安装版发布。
++diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md
++--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-09 05:03:06.000000000 +0000
+++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-10 03:46:16.368959885 +0000
++@@ -4,7 +4,7 @@
++ 
++ - [x] `module.prop` 作者字段设为 `硕`。
++ - [x] README、CHANGELOG、安装说明和测试边界整理。
++-- [x] MIT License 文件加入仓库（公开发布前须由维护者确认版权与授权范围）。
+++- [x] GPL-3.0 License 文件加入仓库（公开发布前须由维护者确认版权与授权范围）。
++ - [x] AI 辅助开发与第三方研究来源说明。
++ - [x] CONTRIBUTING、SECURITY、CODE_OF_CONDUCT 文档。
++ - [x] GitHub Actions Shell 语法与隔离测试工作流。
++@@ -13,7 +13,7 @@
++ 
++ ## 公开发布前仍需维护者确认
++ 
++-- [ ] 确认当前代码、AI 生成内容和后续人工修改可以由维护者按 MIT License 发布。
+++- [ ] 确认当前代码、AI 生成内容和后续人工修改可以由维护者按 GPL-3.0 License 发布。
++ - [ ] 逐文件核对是否包含第三方复制代码、贴图、字体、商标或其它受限资源；如有，补全来源及许可证。
++ - [ ] 确认作者署名“硕”是希望公开展示的名称。
++ - [ ] 在 OPD2513 实机测试安装、升级、重启自启、日常 / 游戏 / 省电档切换、熄屏恢复和卸载恢复。
++@@ -27,4 +27,4 @@
++ 
++ ## 许可证选择说明
++ 
++-当前随包放入 MIT License 作为宽松型默认方案。MIT 允许他人修改、再分发及用于闭源衍生作品，只需保留版权和许可声明。若维护者希望衍生作品也必须继续开源，应在首次公开发布前考虑 GPL-3.0，并同步替换 LICENSE、README 和工作流说明。
+++本仓库采用 GNU General Public License v3.0（GPL-3.0-only）。发布前须确认所有纳入内容均可由维护者按 GPL-3.0 授权，并保留完整许可证文本与对应 SPDX 标识。
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/README.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/README.md
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/README.md	2026-11-09 05:05:26.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/README.md	2026-11-10 03:46:16.369229419 +0000
+@@ -157,7 +157,16 @@
+ 
+ ## 许可证
+ 
+-本仓库附带 MIT License。该许可证较宽松，允许使用、修改和再分发，并要求保留版权和许可声明。公开发布前，维护者仍须确认所有纳入内容均有权按该许可证发布；若希望衍生版本也必须以相同许可证开放，应考虑改用 GPL-3.0，并在第一次公开发布前统一替换许可证文件。
++本仓库采用 GNU General Public License v3.0（GPL-3.0-only）。分发本项目或其衍生作品时，应遵守 GPL-3.0 的完整条款，并保留版权与许可证声明。
++
++### 恢复语义与边界
++
++- 基线是模块在本次启动周期内、首次写入某个节点之前成功读取的值，不等同于 ROM 出厂值。
++- 只有当节点当前值仍等于 SmoothFlow 最后一次登记的写入值时，模块才会恢复基线。
++- 如果检测到其它服务或模块已改写该节点，SmoothFlow 会放弃该节点的管理并保留外部值；因此卸载不保证覆盖外部接管后的值。
++- 节点不可读、不可写或快照不完整时，模块采取 fail-closed：跳过对应写入或报告恢复失败，不伪报成功。
++- 锁回收使用短时 `.reap` 门禁；若该门禁在持有期间遭到不可捕获的 SIGKILL，模块会拒绝继续争抢锁，重启后可清除残留状态。
++
+ 
+ ## 致谢与研究参考
+ 
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md /tmp/sf_batch/patch/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md	2026-11-09 05:05:26.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md	2026-11-10 03:39:41.479109437 +0000
+@@ -5,7 +5,7 @@
+ - 修复 uclamp 比较仅检查整数部分的问题，`10.50` 不再被误判为 `10.00`。
+ - 漂移检测使用完整百分比比较，并增加小数写入、恢复与漂移回归用例。
+ - daemon 在正常退出、停止标记退出或收到终止信号时，按 PID 与启动时间双重校验清理自身 PID 文件。
+-- 作者署名统一为 `硕`；补齐 MIT License、AI 辅助开发说明、贡献指南、安全策略、行为准则和 GitHub Actions 测试。
++- 作者署名统一为 `硕`；补齐 GPL-3.0 License、AI 辅助开发说明、贡献指南、安全策略、行为准则和 GitHub Actions 测试。
+ - 默认调度参数、游戏识别策略与 10 秒守护节拍保持不变。
+ 
+ ## 验证
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/action.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/action.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/action.sh	2026-11-09 05:03:14.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/action.sh	2026-11-10 03:40:40.830921473 +0000
+@@ -1,5 +1,5 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # SmoothFlow 5.0.4 操作面板 / 状态可视化
+ case "$0" in */*) MODDIR=$(cd "${0%/*}" && pwd) ;; *) MODDIR=$(pwd) ;; esac
+@@ -202,7 +202,10 @@
+         fi
+         ;;
+     off)
+-        stop_daemon
++        if ! stop_daemon; then
++            printf '✗ 守护进程未能确认停止；为避免并发写入，本次不执行恢复\n'
++            exit 1
++        fi
+         if restore_all; then
+             write_state off ""
+             printf '✓ 已停止守护并恢复模块管理的参数\n'
+@@ -228,7 +231,10 @@
+         ;;
+     restore)
+         set_game_force 0
+-        stop_daemon
++        if ! stop_daemon; then
++            printf '✗ 守护进程未能确认停止；为避免并发写入，本次不执行恢复\n'
++            exit 1
++        fi
+         if restore_all; then
+             write_state off ""
+             printf '✓ 已停止守护并恢复模块管理的参数；如需重新运行，请执行 start\n'
+@@ -304,7 +310,7 @@
+             fi
+             exit 0
+         fi
+-        stop_daemon
++        stop_daemon || { printf '✗ 旧守护进程未能确认停止，拒绝启动新实例\n'; exit 1; }
+         set_stopped 0
+         if command -v setsid >/dev/null 2>&1; then
+             setsid sh "$MODDIR/bin/supervisor.sh" >/dev/null 2>&1 &
+@@ -325,8 +331,12 @@
+         fi
+         ;;
+     stop)
+-        stop_daemon
+-        printf '✓ 守护进程已停止\n'
++        if stop_daemon; then
++            printf '✓ 守护进程已停止\n'
++        else
++            printf '✗ 未能确认守护进程停止；请检查日志，勿视为成功\n'
++            exit 1
++        fi
+         ;;
+     frame)
+         printf 'SmoothFlow 5.0.4 帧时间反馈状态\n'
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/bin/core.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/bin/core.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/bin/core.sh	2026-11-09 08:00:02.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/bin/core.sh	2026-11-10 03:48:13.768832036 +0000
+@@ -1,9 +1,9 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # SmoothFlow 5.0.4 核心库
+ # 只写 sysfs / procfs 下的运行时参数，不挂载、不修改任何分区。
+-# 所有改动在重启后失效；uninstall.sh 会把参数还原为本模块记录的原厂值。
++# 所有改动在重启后失效；uninstall.sh 会把仍由本模块持有的参数还原为首次写入前采集的基线值。
+ #
+ # 4.0 设计要点：
+ #  1. 热路径（屏幕/前台/游戏识别）全部走 procfs + Shell 内建，不再调用 dumpsys。
+@@ -453,6 +453,8 @@
+     if [ -f "$DEF" ]; then
+         while IFS= read -r _ca_line; do
+             [ -n "$_ca_line" ] || continue
++            # 同一路径的畸形空值行必须被替换，否则 def_of 永远只读到第一条空记录。
++            [ "${_ca_line%% *}" = "$_ca_f" ] && continue
+             printf '%s\n' "$_ca_line" >> "$_ca_tmp" || {
+                 rm -f "$_ca_tmp" 2>/dev/null
+                 log "复制已有原始值快照失败，禁止后续写入: $_ca_f"
+@@ -937,30 +939,35 @@
+ # 撤销本模块写入的省电上限：不做“当前值必须等于配置值”的精确匹配，
+ # 交由 restore_one_if_owned 处理内核钳位/外部改写。
+ restore_eco_caps() {
+-    # 频率表可能与配置值不同，写入的是 snap 之后的值；这里必须用同样的对齐结果判定归属，
+-    # 否则省电上限会残留（例如配置 1996800、实际写入 1977600）。
+-    _re_cap=$(snap_freq "$CPU0" "$ECO_MAX0" down) || _re_cap=
+-    if [ -n "$_re_cap" ] && [ "$(applied_of "$CPU0/scaling_max_freq")" = "$_re_cap" ]; then
+-        restore_one_if_owned "$CPU0/scaling_max_freq"
+-    fi
+-    _re_cap=$(snap_freq "$CPU6" "$ECO_MAX6" down) || _re_cap=
+-    if [ -n "$_re_cap" ] && [ "$(applied_of "$CPU6/scaling_max_freq")" = "$_re_cap" ]; then
+-        restore_one_if_owned "$CPU6/scaling_max_freq"
+-    fi
++    # 归属记录保存的是实际写入值；配置可能在档位存续期间变化，
++    # 因此不得再用当前 ECO_MAX 配置反推历史写入值。
++    restore_one_if_owned "$CPU0/scaling_max_freq" || SF_WRITE_FAILED=1
++    restore_one_if_owned "$CPU6/scaling_max_freq" || SF_WRITE_FAILED=1
+ }
+ 
+-# 退出游戏 / 进入省电档时，把"我们抬起来的最低频率"放回原厂值。
++# 退出游戏 / 进入省电档时，把"我们抬起来的最低频率"放回首次采集的基线值。
+ # 比对基准必须是 snap 后的实际写入值，不能用原始配置值。
+ settle_min() {
+     _st_file=$1
+     _st_pol=$2
+     _st_target=$3
+-    shift 3
+-    for _st_raw in "$@"; do
+-        [ "$_st_raw" -gt 0 ] 2>/dev/null || continue
+-        _st_ours=$(snap_freq "$_st_pol" "$_st_raw" up) || continue
+-        lower_ours "$_st_file" "$_st_target" "$_st_ours"
+-    done
++    _st_last=$(applied_of "$_st_file")
++    [ -n "$_st_last" ] || {
++        [ "$_st_target" -gt 0 ] 2>/dev/null && raise_min "$_st_file" "$_st_target"
++        return 0
++    }
++    _st_cur=$(read_node "$_st_file" 2>/dev/null) || _st_cur=
++    if [ "$_st_cur" != "$_st_last" ]; then
++        # 外部值已变化：交由归属保护释放记录，不再覆盖外部管理者。
++        restore_one_if_owned "$_st_file" || SF_WRITE_FAILED=1
++        return 0
++    fi
++    restore_one_if_owned "$_st_file" || { SF_WRITE_FAILED=1; return 1; }
++    # 先恢复到基线，再应用当前档位目标；配置变更不影响历史归属判定。
++    if [ "$_st_target" -gt 0 ] 2>/dev/null; then
++        raise_min "$_st_file" "$_st_target"
++    fi
++    return 0
+ }
+ 
+ apply_on() {
+@@ -1193,6 +1200,15 @@
+ PROFILE_LOCK=$DATADIR/profile.lock
+ 
+ # 纯 Shell 解析 /proc/<pid>/stat 的第 22 字段（starttime），不产生 sed/awk 子进程。
++proc_state() {
++    [ -r "$PROC/$1/stat" ] || return 1
++    IFS= read -r _ps_line < "$PROC/$1/stat" 2>/dev/null || return 1
++    _ps_rest=${_ps_line##*) }
++    set -- $_ps_rest
++    [ -n "$1" ] || return 1
++    printf '%s\n' "$1"
++}
++
+ proc_start_time() {
+     [ -r "$PROC/$1/stat" ] || return 1
+     IFS= read -r _pst_line < "$PROC/$1/stat" 2>/dev/null || return 1
+@@ -1203,50 +1219,91 @@
+     printf '%s\n' "$1"
+ }
+ 
++# 锁回收采用短时 reaper gate 串行化。所有竞争者在 mkdir 主锁后再次检查 gate，
++# 防止“旧锁已判死、新实例刚建锁”时另一个回收者拆掉新锁。
++# 若 reaper gate 自身被 SIGKILL 留下，选择 fail-closed（记录日志并等待重启），
++# 不尝试递归回收第二层锁，以免重新引入同类 TOCTOU。
++lock_owner_stale() {
++    _los_dir=$1
++    _los_line=$(read_node "$_los_dir/pid" 2>/dev/null) || _los_line=
++    _los_pid=${_los_line%% *}
++    _los_start=${_los_line#* }
++    [ "$_los_start" = "$_los_line" ] && _los_start=
++    case "$_los_pid" in
++        ''|*[!0-9]*)
++            _los_mtime=$(stat -c %Y "$_los_dir" 2>/dev/null)
++            _los_now=$(date +%s 2>/dev/null)
++            case "$_los_mtime:$_los_now" in *[!0-9:]*|:*) return 1 ;; esac
++            [ "$_los_mtime" -gt 0 ] && [ $((_los_now - _los_mtime)) -gt 30 ] 2>/dev/null
++            return
++            ;;
++    esac
++    [ "$_los_pid" -gt 0 ] 2>/dev/null || return 1
++    [ -d "$PROC/$_los_pid" ] || return 0
++    # 活 PID 但启动时间不可读/记录为空时，不冒险回收。
++    [ -n "$_los_start" ] || return 1
++    _los_live=$(proc_start_time "$_los_pid" 2>/dev/null) || _los_live=
++    [ -n "$_los_live" ] || return 1
++    [ "$_los_live" != "$_los_start" ]
++}
++
++reap_lock_dir() {
++    _rld_dir=$1
++    _rld_gate="$_rld_dir.reap"
++    mkdir "$_rld_gate" 2>/dev/null || return 1
++    _rld_start=$(proc_start_time $$ 2>/dev/null) || _rld_start=
++    _rld_tmp="$_rld_gate/pid.tmp.$$"
++    if ! printf '%s %s\n' "$$" "$_rld_start" > "$_rld_tmp" 2>/dev/null || ! mv -f "$_rld_tmp" "$_rld_gate/pid" 2>/dev/null; then
++        rm -f "$_rld_tmp" 2>/dev/null
++        rmdir "$_rld_gate" 2>/dev/null
++        return 1
++    fi
++    if [ -d "$_rld_dir" ] && lock_owner_stale "$_rld_dir"; then
++        _rld_quarantine="$_rld_dir.stale.$$.$(date +%s)"
++        if mv "$_rld_dir" "$_rld_quarantine" 2>/dev/null; then
++            rm -rf "$_rld_quarantine" 2>/dev/null
++            log "已隔离并清理失效锁目录: $_rld_dir"
++        fi
++    fi
++    _rld_now=$(read_node "$_rld_gate/pid" 2>/dev/null) || _rld_now=
++    [ "$_rld_now" = "$$ $_rld_start" ] && rm -rf "$_rld_gate" 2>/dev/null
++    return 0
++}
++
+ lock_profile() {
+     _lp_tries=0
+     while [ "$_lp_tries" -lt 20 ]; do
++        [ -d "$PROFILE_LOCK.reap" ] && { sleep 0.2; _lp_tries=$((_lp_tries + 1)); continue; }
+         if mkdir "$PROFILE_LOCK" 2>/dev/null; then
++            # reaper 可能在本进程检查后启动；gate 存在时不发布 PID，主动让出空目录。
++            if [ -d "$PROFILE_LOCK.reap" ]; then
++                rmdir "$PROFILE_LOCK" 2>/dev/null
++                sleep 0.2
++                _lp_tries=$((_lp_tries + 1))
++                continue
++            fi
+             _lp_self_start=$(proc_start_time $$ 2>/dev/null) || _lp_self_start=
+-            if ! printf '%s %s\n' "$$" "$_lp_self_start" > "$PROFILE_LOCK/pid" 2>/dev/null; then
+-                rm -f "$PROFILE_LOCK/pid" 2>/dev/null
++            _lp_tmp="$PROFILE_LOCK/pid.tmp.$$"
++            if ! printf '%s %s\n' "$$" "$_lp_self_start" > "$_lp_tmp" 2>/dev/null || ! mv -f "$_lp_tmp" "$PROFILE_LOCK/pid" 2>/dev/null; then
++                rm -f "$_lp_tmp" "$PROFILE_LOCK/pid" 2>/dev/null
+                 rmdir "$PROFILE_LOCK" 2>/dev/null
+                 log "参数锁 PID 记录失败，拒绝本轮写入"
+                 return 1
+             fi
+             _lp_saved=$(read_node "$PROFILE_LOCK/pid" 2>/dev/null) || _lp_saved=
+-            if [ "${_lp_saved%% *}" != "$$" ]; then
++            [ "$_lp_saved" = "$$ $_lp_self_start" ] || {
+                 rm -f "$PROFILE_LOCK/pid" 2>/dev/null
+                 rmdir "$PROFILE_LOCK" 2>/dev/null
+                 log "参数锁归属校验失败，拒绝本轮写入"
+                 return 1
+-            fi
++            }
+             return 0
+         fi
+-        _lp_line=$(read_node "$PROFILE_LOCK/pid" 2>/dev/null) || _lp_line=
+-        _lp_owner=${_lp_line%% *}
+-        _lp_start=${_lp_line#* }
+-        [ "$_lp_start" = "$_lp_line" ] && _lp_start=
+-        case "$_lp_owner" in ''|*[!0-9]*) _lp_owner=0 ;; esac
+-        if [ "$_lp_owner" -gt 0 ] 2>/dev/null; then
+-            _lp_live=$(proc_start_time "$_lp_owner" 2>/dev/null) || _lp_live=
+-            if [ ! -d "$PROC/$_lp_owner" ] || { [ -n "$_lp_start" ] && [ -n "$_lp_live" ] && [ "$_lp_start" != "$_lp_live" ]; }; then
+-                rm -f "$PROFILE_LOCK/pid" 2>/dev/null
+-                rmdir "$PROFILE_LOCK" 2>/dev/null
+-            fi
+-        else
+-            # 只回收停在“mkdir 成功但 pid 还没写入”这一极小窗口的残锁，且需超过 30 秒。
+-            _lp_mtime=$(stat -c %Y "$PROFILE_LOCK" 2>/dev/null)
+-            _lp_now=$(date +%s 2>/dev/null)
+-            case "$_lp_mtime:$_lp_now" in *[!0-9:]*|:*) _lp_mtime=0 ;; esac
+-            if [ "$_lp_mtime" -gt 0 ] && [ $((_lp_now - _lp_mtime)) -gt 30 ] 2>/dev/null; then
+-                rmdir "$PROFILE_LOCK" 2>/dev/null
+-            fi
+-        fi
++        if [ ! -d "$PROFILE_LOCK.reap" ]; then reap_lock_dir "$PROFILE_LOCK" || :; fi
+         sleep 0.2
+         _lp_tries=$((_lp_tries + 1))
+     done
+-    log "参数锁等待超时，跳过本轮档位写入"
++    log "参数锁等待超时或回收门禁占用，跳过本轮档位写入"
+     return 1
+ }
+ 
+@@ -1301,71 +1358,45 @@
+ 
+ # supervisor 使用独立目录锁，避免 service.sh 和手动 start 并发拉起多个实例。
+ acquire_supervisor_lock() {
+-    if mkdir "$SUPLOCK" 2>/dev/null; then
+-        _asl_start=$(proc_start_time $$ 2>/dev/null) || _asl_start=
+-        if ! printf '%s %s\n' "$$" "$_asl_start" > "$SUPLOCK/pid" 2>/dev/null; then
+-            rm -f "$SUPLOCK/pid" 2>/dev/null
+-            rmdir "$SUPLOCK" 2>/dev/null
+-            log "supervisor 锁记录失败，拒绝启动"
+-            return 1
+-        fi
+-        _asl_saved=$(read_node "$SUPLOCK/pid" 2>/dev/null) || _asl_saved=
+-        [ "${_asl_saved%% *}" = "$$" ] || {
+-            rm -f "$SUPLOCK/pid" 2>/dev/null
+-            rmdir "$SUPLOCK" 2>/dev/null
+-            log "supervisor 锁归属校验失败，拒绝启动"
+-            return 1
+-        }
+-        return 0
+-    fi
+-
+-    _asl_line=$(read_node "$SUPLOCK/pid" 2>/dev/null) || _asl_line=
+-    _asl_pid=${_asl_line%% *}
+-    _asl_owner_start=${_asl_line#* }
+-    [ "$_asl_owner_start" = "$_asl_line" ] && _asl_owner_start=
+-    case "$_asl_pid" in ''|*[!0-9]*) _asl_pid=0 ;; esac
+-
+-    if [ "$_asl_pid" -gt 0 ] 2>/dev/null; then
+-        _asl_live_start=$(proc_start_time "$_asl_pid" 2>/dev/null) || _asl_live_start=
+-        if [ ! -d "$PROC/$_asl_pid" ] || { [ -n "$_asl_owner_start" ] && [ -n "$_asl_live_start" ] && [ "$_asl_owner_start" != "$_asl_live_start" ]; }; then
+-            rm -f "$SUPLOCK/pid" 2>/dev/null
+-            rmdir "$SUPLOCK" 2>/dev/null
+-            mkdir "$SUPLOCK" 2>/dev/null || return 1
++    _asl_tries=0
++    while [ "$_asl_tries" -lt 20 ]; do
++        [ -d "$SUPLOCK.reap" ] && { sleep 0.2; _asl_tries=$((_asl_tries + 1)); continue; }
++        if mkdir "$SUPLOCK" 2>/dev/null; then
++            if [ -d "$SUPLOCK.reap" ]; then
++                rmdir "$SUPLOCK" 2>/dev/null
++                sleep 0.2
++                _asl_tries=$((_asl_tries + 1))
++                continue
++            fi
+             _asl_start=$(proc_start_time $$ 2>/dev/null) || _asl_start=
+-            if ! printf '%s %s\n' "$$" "$_asl_start" > "$SUPLOCK/pid" 2>/dev/null; then
+-                rm -f "$SUPLOCK/pid" 2>/dev/null
++            _asl_tmp="$SUPLOCK/pid.tmp.$$"
++            if ! printf '%s %s\n' "$$" "$_asl_start" > "$_asl_tmp" 2>/dev/null || ! mv -f "$_asl_tmp" "$SUPLOCK/pid" 2>/dev/null; then
++                rm -f "$_asl_tmp" "$SUPLOCK/pid" 2>/dev/null
+                 rmdir "$SUPLOCK" 2>/dev/null
+-                log "回收残留 supervisor 锁后写入 PID 失败，拒绝启动"
++                log "supervisor 锁记录失败，拒绝启动"
+                 return 1
+             fi
+             _asl_saved=$(read_node "$SUPLOCK/pid" 2>/dev/null) || _asl_saved=
+-            if [ "${_asl_saved%% *}" != "$$" ]; then
++            [ "$_asl_saved" = "$$ $_asl_start" ] || {
+                 rm -f "$SUPLOCK/pid" 2>/dev/null
+                 rmdir "$SUPLOCK" 2>/dev/null
+-                log "回收残留 supervisor 锁后归属校验失败，拒绝启动"
++                log "supervisor 锁归属校验失败，拒绝启动"
+                 return 1
+-            fi
++            }
+             return 0
+         fi
+-        log "检测到 supervisor 锁占用（PID $_asl_pid），拒绝重复启动"
+-        return 1
+-    fi
+-
+-    # 锁目录刚创建但 PID 还未写入时不抢占；超过 30 秒才回收明显残留。
+-    _asl_mtime=$(stat -c %Y "$SUPLOCK" 2>/dev/null)
+-    _asl_now=$(date +%s 2>/dev/null)
+-    case "$_asl_mtime:$_asl_now" in *[!0-9:]*|:*) _asl_mtime=0 ;; esac
+-    if [ "$_asl_mtime" -gt 0 ] && [ $((_asl_now - _asl_mtime)) -gt 30 ] 2>/dev/null; then
+-        rm -f "$SUPLOCK/pid" 2>/dev/null
+-        rmdir "$SUPLOCK" 2>/dev/null
+-    fi
+-    log "supervisor 锁状态不明确，拒绝本次启动"
++        if [ ! -d "$SUPLOCK.reap" ]; then reap_lock_dir "$SUPLOCK" || :; fi
++        sleep 0.2
++        _asl_tries=$((_asl_tries + 1))
++    done
++    log "supervisor 锁被占用或回收门禁异常，拒绝重复启动"
+     return 1
+ }
+ 
+ release_supervisor_lock() {
+     _rsl_line=$(read_node "$SUPLOCK/pid" 2>/dev/null) || _rsl_line=
+-    if [ "${_rsl_line%% *}" = "$$" ]; then
++    _rsl_start=$(proc_start_time $$ 2>/dev/null) || _rsl_start=${_asl_start:-}
++    if [ "$_rsl_line" = "$$ $_rsl_start" ]; then
+         rm -f "$SUPLOCK/pid" 2>/dev/null
+         rmdir "$SUPLOCK" 2>/dev/null
+     fi
+@@ -1406,6 +1437,7 @@
+     _sd_dp=${_sd_dp_line%% *}
+     _sd_dp_start=${_sd_dp_line#* }
+     [ "$_sd_dp_start" = "$_sd_dp_line" ] && _sd_dp_start=
++
+     pid_is_ours "$_sd_sp" supervisor "$_sd_sp_start" && kill "$_sd_sp" 2>/dev/null
+     pid_is_ours "$_sd_dp" daemon "$_sd_dp_start" && kill "$_sd_dp" 2>/dev/null
+     _sd_wait=0
+@@ -1419,9 +1451,38 @@
+     done
+     pid_is_ours "$_sd_sp" supervisor "$_sd_sp_start" && kill -9 "$_sd_sp" 2>/dev/null
+     pid_is_ours "$_sd_dp" daemon "$_sd_dp_start" && kill -9 "$_sd_dp" 2>/dev/null
++
++    # SIGKILL 后再等待并复核；若 PID 仍存在且身份不确定，不宣称停止成功。
++    _sd_wait2=0
++    while [ "$_sd_wait2" -lt 25 ]; do
++        _sd_alive=0
++        pid_is_ours "$_sd_sp" supervisor "$_sd_sp_start" && _sd_alive=1
++        pid_is_ours "$_sd_dp" daemon "$_sd_dp_start" && _sd_alive=1
++        [ "$_sd_alive" = 0 ] && break
++        sleep 0.2
++        _sd_wait2=$((_sd_wait2 + 1))
++    done
++    _sd_failed=0
++    for _sd_pair in "$_sd_sp|$_sd_sp_start|supervisor" "$_sd_dp|$_sd_dp_start|daemon"; do
++        _sd_p=${_sd_pair%%|*}; _sd_rest=${_sd_pair#*|}
++        _sd_st=${_sd_rest%%|*}; _sd_kind=${_sd_rest#*|}
++        case "$_sd_p" in ''|*[!0-9]*) continue ;; esac
++        if [ -d "$PROC/$_sd_p" ]; then
++            _sd_state=$(proc_state "$_sd_p" 2>/dev/null) || _sd_state=
++            case "$_sd_state" in Z|X) continue ;; esac
++            _sd_live_start=$(proc_start_time "$_sd_p" 2>/dev/null) || _sd_live_start=
++            if [ -z "$_sd_st" ] || [ -z "$_sd_live_start" ] || [ "$_sd_live_start" = "$_sd_st" ]; then
++                # 进程仍存在且无法确认不是本模块实例：保留 PID 记录并报失败。
++                _sd_failed=1
++                log "无法确认 $_sd_kind（PID $_sd_p）已停止；保留进程记录"
++            fi
++        fi
++    done
++    [ "$_sd_failed" = 0 ] || return 1
+     remove_pidfile_if_unchanged "$PIDF" "$_sd_dp_line" "$_sd_dp_existed"
+     remove_pidfile_if_unchanged "$SUPIDF" "$_sd_sp_line" "$_sd_sp_existed"
+-    log "守护进程停止流程完成（等待 $((_sd_wait / 5))s）"
++    log "守护进程停止已确认（等待 $((_sd_wait / 5))s + $((_sd_wait2 / 5))s）"
++    return 0
+ }
+ 
+ # ---------- 屏幕状态（零 dumpsys 快路径） ----------
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/bin/daemon.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/bin/daemon.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/bin/daemon.sh	2026-11-09 05:05:26.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/bin/daemon.sh	2026-11-10 03:40:40.830700211 +0000
+@@ -1,5 +1,5 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # SmoothFlow 5.0.4 状态守护
+ # 节拍 10 秒；热路径只做 Shell 内建 procfs/sysfs 读取，不调用 dumpsys。
+@@ -7,6 +7,7 @@
+ MODDIR=$(cd "${0%/*}/.." && pwd)
+ . "$MODDIR/bin/core.sh"
+ 
++daemon_alive && { log "检测到已有 daemon 实例，拒绝重复启动"; exit 0; }
+ _daemon_start=$(proc_start_time $$ 2>/dev/null) || _daemon_start=
+ [ -n "$_daemon_start" ] || {
+     log "无法读取 daemon 启动时间，拒绝进入后台循环"
+@@ -19,7 +20,9 @@
+ # 正常退出、停止标记退出及信号退出均清理自身 PID 文件；不碰其它实例的记录。
+ trap 'cleanup_daemon' EXIT
+ trap 'exit 0' HUP INT TERM
+-if ! printf '%s %s\n' "$$" "$_daemon_start" > "$PIDF" 2>/dev/null; then
++_daemon_pid_tmp="$PIDF.tmp.$$"
++if ! printf '%s %s\n' "$$" "$_daemon_start" > "$_daemon_pid_tmp" 2>/dev/null || ! mv -f "$_daemon_pid_tmp" "$PIDF" 2>/dev/null; then
++    rm -f "$_daemon_pid_tmp" 2>/dev/null
+     log "daemon PID 文件写入失败，拒绝进入后台循环"
+     exit 1
+ fi
+@@ -50,6 +53,20 @@
+     is_stopped && { log "收到停止标记，daemon 退出"; exit 0; }
+     tick=$((tick + 1))
+ 
++    # cgroup 可能晚于 daemon 启动才挂载；每 60 秒重探一次，避免永久退化到 dumpsys。
++    if [ $((tick % 6)) -eq 1 ]; then
++        _cg_new=0
++        front_cgroup_file >/dev/null 2>&1 && _cg_new=1
++        if [ "$_cg_new" != "$has_cg" ]; then
++            has_cg=$_cg_new
++            if [ "$has_cg" = 1 ]; then
++                log "top-app cgroup 已就绪，游戏识别切换到 procfs 快路径"
++            else
++                log "top-app cgroup 暂不可用，游戏识别临时退回 dumpsys 兜底"
++            fi
++        fi
++    fi
++
+     # --- 配置热加载：每 10 个节拍（约 100s）检查一次 mtime，变更后重新读取 ---
+     if [ $((tick % 10)) -eq 1 ]; then
+         _cfg_m=
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/bin/supervisor.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/bin/supervisor.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/bin/supervisor.sh	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/bin/supervisor.sh	2026-11-10 03:47:04.140043780 +0000
+@@ -1,5 +1,5 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # SmoothFlow 5.0.4 看门狗：daemon 意外退出时按 10 秒退避重新拉起
+ MODDIR=$(cd "${0%/*}/.." && pwd)
+@@ -10,8 +10,11 @@
+     exit 0
+ fi
+ 
++supervisor_alive && { release_supervisor_lock; log "检测到已有 supervisor 实例，拒绝重复启动"; exit 0; }
+ _supervisor_start=$(proc_start_time $$ 2>/dev/null) || _supervisor_start=
+-if ! printf '%s %s\n' "$$" "$_supervisor_start" > "$SUPIDF" 2>/dev/null; then
++_supervisor_pid_tmp="$SUPIDF.tmp.$$"
++if ! printf '%s %s\n' "$$" "$_supervisor_start" > "$_supervisor_pid_tmp" 2>/dev/null || ! mv -f "$_supervisor_pid_tmp" "$SUPIDF" 2>/dev/null; then
++    rm -f "$_supervisor_pid_tmp" 2>/dev/null
+     release_supervisor_lock
+     log "supervisor PID 文件写入失败，退出"
+     exit 1
+@@ -19,7 +22,7 @@
+ 
+ cleanup_supervisor() {
+     _cs_now=$(read_node "$SUPIDF" 2>/dev/null)
+-    [ "${_cs_now%% *}" = "$$" ] && rm -f "$SUPIDF" 2>/dev/null
++    [ "$_cs_now" = "$$ $_supervisor_start" ] && rm -f "$SUPIDF" 2>/dev/null
+     release_supervisor_lock
+ }
+ trap 'cleanup_supervisor; exit 0' HUP INT TERM
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/config.example.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/config.example.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/config.example.sh	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/config.example.sh	2026-11-10 03:39:41.476923051 +0000
+@@ -1,5 +1,5 @@
+ # SmoothFlow 5.0.4 可选配置
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # 复制到 /data/adb/smoothflow/config.sh 后，执行 action.sh stop 再 start（或重启）生效。
+ # 只接受 白名单键=纯数字；不执行任何 Shell 代码，不支持变量展开。
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/post-fs-data.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/post-fs-data.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/post-fs-data.sh	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/post-fs-data.sh	2026-11-10 03:39:41.476713096 +0000
+@@ -1,5 +1,5 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # SmoothFlow 5.0.4 开机早期阶段：仅初始化日志和本启动周期状态，不写调度节点。
+ case "$0" in */*) MODDIR=$(cd "${0%/*}" && pwd) ;; *) MODDIR=$(pwd) ;; esac
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/scripts/package.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/scripts/package.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/scripts/package.sh	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/scripts/package.sh	2026-11-10 03:46:16.369081277 +0000
+@@ -1,5 +1,5 @@
+ #!/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ set -eu
+ 
+@@ -26,7 +26,7 @@
+ 
+ # Runtime entrypoints must remain executable in the ZIP.
+ chmod 755 "$TMP/post-fs-data.sh" "$TMP/service.sh" "$TMP/action.sh" "$TMP/uninstall.sh" \
+-          "$TMP/bin/core.sh" "$TMP/bin/daemon.sh" "$TMP/bin/supervisor.sh" "$TMP/tests/selftest.sh"
++          "$TMP/bin/core.sh" "$TMP/bin/daemon.sh" "$TMP/bin/supervisor.sh" "$TMP/tests/selftest.sh" "$TMP/tests/lock_stress.sh"
+ chmod 644 "$TMP/config.example.sh"
+ 
+ ZIP="$OUT/SmoothFlow_5.0.4_OPD2513.zip"
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/service.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/service.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/service.sh	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/service.sh	2026-11-10 03:39:41.476872875 +0000
+@@ -1,5 +1,5 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # SmoothFlow 5.0.4 启动阶段
+ # 顺序：等待 boot_completed → 确认 CPU 拓扑 → 补快照 → 按屏幕状态应用 → 启动守护
+@@ -31,17 +31,12 @@
+     log "CPU policy 检查完成（等待 $((n * 2))s）：低=$CPU0 高=$CPU6 容量=$CPU_LOW_SCORE/$CPU_HIGH_SCORE"
+ fi
+ 
+-# 清理上一次运行可能残留的锁目录（属主进程已不存在时）
+-if [ -d "$PROFILE_LOCK" ]; then
+-    _lk_p=$(read_node "$PROFILE_LOCK/pid" 2>/dev/null) || _lk_p=
+-    case "${_lk_p%% *}" in
+-        ''|*[!0-9]*) rmdir "$PROFILE_LOCK" 2>/dev/null ;;
+-        *) [ -d "$PROC/${_lk_p%% *}" ] || { rm -f "$PROFILE_LOCK/pid" 2>/dev/null; rmdir "$PROFILE_LOCK" 2>/dev/null; } ;;
+-    esac
+-fi
++# 锁回收统一由 core.sh 的串行化回收协议负责；service 不独立拆锁。
+ 
+ # 已有守护进程先停掉，避免与启动阶段的应用竞争
+-if [ -f "$PIDF" ] || [ -f "$SUPIDF" ]; then stop_daemon; fi
++if [ -f "$PIDF" ] || [ -f "$SUPIDF" ]; then
++    stop_daemon || { log "旧守护进程未能确认停止，拒绝启动新实例"; exit 1; }
++fi
+ 
+ if [ "$ready" = 1 ]; then
+     # 系统启动完成且目标节点就绪后，才采集厂商最终值。
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/tests/lock_stress.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/tests/lock_stress.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/tests/lock_stress.sh	1970-01-01 00:00:00.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/tests/lock_stress.sh	2026-11-10 03:47:18.478550992 +0000
+@@ -0,0 +1,60 @@
++#!/system/bin/sh
++# SPDX-License-Identifier: GPL-3.0-only
++# SmoothFlow lock stress test: uses real /proc, temporary data only; never writes /sys.
++HERE=$(cd "${0%/*}" && pwd)
++CORE=$HERE/../bin/core.sh
++T=${SF_STRESS_DIR:-${TMPDIR:-/tmp}/sf-lock-stress.$$}
++export SF_STRESS_DIR="$T"
++mkdir -p "$T/data" "$T/sys" "$T/cg"
++export SF_DATADIR="$T/data" SF_SYS="$T/sys" SF_CG="$T/cg" SF_PROC=/proc SF_TRASH="$T/trash"
++FAIL=0
++ROUNDS=${ROUNDS:-20}
++
++worker() {
++    _mode=$1
++    . "$CORE"
++    if [ "$_mode" = profile ]; then
++        lock_profile || exit 10
++    else
++        acquire_supervisor_lock || exit 10
++    fi
++    if ! mkdir "$T/inside" 2>/dev/null; then
++        printf 'collision %s %s\n' "$_mode" "$$" >> "$T/collision"
++        if [ "$_mode" = profile ]; then unlock_profile; else release_supervisor_lock; fi
++        exit 11
++    fi
++    sleep 0.02
++    rmdir "$T/inside" 2>/dev/null
++    if [ "$_mode" = profile ]; then unlock_profile; else release_supervisor_lock; fi
++}
++
++if [ "${1:-}" = "--worker" ]; then
++    worker "$2"
++    exit $?
++fi
++
++run_round() {
++    _mode=$1
++    if [ "$_mode" = profile ]; then _lock="$T/data/profile.lock"; else _lock="$T/data/supervisor.lock"; fi
++    rm -rf "$_lock" "$_lock.reap" "$T/inside"
++    mkdir "$_lock" || return 1
++    printf '99999999 1\n' > "$_lock/pid"
++    sh "$0" --worker "$_mode" & _a=$!
++    sh "$0" --worker "$_mode" & _b=$!
++    wait "$_a"; _ra=$?
++    wait "$_b"; _rb=$?
++    [ "$_ra" = 0 ] && [ "$_rb" = 0 ] || return 1
++    [ ! -e "$T/collision" ] || return 1
++    [ ! -d "$_lock" ] || return 1
++    [ ! -d "$_lock.reap" ] || return 1
++}
++
++n=0
++while [ "$n" -lt "$ROUNDS" ]; do
++    run_round profile || { echo "FAIL profile lock round=$n"; FAIL=1; break; }
++    run_round supervisor || { echo "FAIL supervisor lock round=$n"; FAIL=1; break; }
++    n=$((n + 1))
++done
++rm -rf "$T"
++if [ "$FAIL" = 0 ]; then echo "PASS lock stress: $((ROUNDS * 2)) dual-process stale-lock rounds"; exit 0; fi
++exit 1
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/tests/selftest.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/tests/selftest.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/tests/selftest.sh	2026-11-09 08:00:02.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/tests/selftest.sh	2026-11-10 03:49:13.908920856 +0000
+@@ -1,5 +1,5 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ # SmoothFlow 5.0.4 隔离自测
+ # 在临时目录里构造假的 sysfs / procfs / cgroup，验证：
+@@ -241,7 +241,7 @@
+ run 'apply_game' >/dev/null
+ expect "$P0/scaling_min_freq" 1804800 "游戏档最低频率对齐到 1804800"
+ run 'apply_on' >/dev/null
+-expect "$P0/scaling_min_freq" 787200 "退出游戏后最低频率回落原厂值"
++expect "$P0/scaling_min_freq" 787200 "退出游戏后最低频率回落基线值"
+ rm -f "$DATA/config.sh"
+ run 'apply_off' >/dev/null
+ 
+@@ -382,5 +382,94 @@
+ OUT=$(run 'remove_pidfile_if_unchanged "$PIDF" "" 1; [ -e "$PIDF" ]; printf "%s" "$?"')
+ [ "$OUT" = 1 ] && ok "空 PID 文件可按捕获状态清理" || bad "空 PID 文件清理：[$OUT]"
+ 
++
++# ---- 27. 配置热变更后按实际归属值恢复频率节点（M1） ----
++: > "$DATA/defaults.txt"
++: > "$DATA/applied.txt"
++rm -f "$DATA/config.sh"
++printf 'ECO_MAX6=1996800\n' > "$DATA/config.sh"
++OUT=$(run '
++    load_config; validate_config; apply_eco >/dev/null || exit 9
++    _eco_written=$(read_node "$CPU6/scaling_max_freq")
++    printf "ECO_MAX6=2496000\\n" > "$DATADIR/config.sh"
++    load_config; validate_config; apply_on >/dev/null || exit 8
++    printf "%s|%s" "$_eco_written" "$(read_node "$CPU6/scaling_max_freq")"
++')
++[ "$OUT" = "1996800|4512000" ] && ok "省电档配置变更后高簇 max 按归属记录恢复基线" || bad "M1 省电 max 配置变更恢复：[$OUT]"
++run 'apply_off' >/dev/null
++: > "$DATA/defaults.txt"
++: > "$DATA/applied.txt"
++printf 'GAME_MIN0=1800000\n' > "$DATA/config.sh"
++OUT=$(run '
++    load_config; validate_config; apply_game >/dev/null || exit 9
++    _game_written=$(read_node "$CPU0/scaling_min_freq")
++    printf "GAME_MIN0=0\\n" > "$DATADIR/config.sh"
++    load_config; validate_config; apply_on >/dev/null || exit 8
++    printf "%s|%s" "$_game_written" "$(read_node "$CPU0/scaling_min_freq")"
++')
++[ "$OUT" = "1804800|787200" ] && ok "游戏档配置变更后低簇 min 按归属记录恢复基线" || bad "M1 游戏 min 配置变更恢复：[$OUT]"
++rm -f "$DATA/config.sh"
++run 'apply_off' >/dev/null
++
++# ---- 28. capture 修复同路径畸形空快照行（S9） ----
++: > "$DATA/defaults.txt"
++: > "$DATA/applied.txt"
++printf '%s \\n%s 123\n' "$W0/hispeed_freq" "$W0/hispeed_freq" > "$DATA/defaults.txt"
++printf '1286400\n' > "$P0/walt/hispeed_freq"
++OUT=$(run 'capture "$W0/hispeed_freq" >/dev/null; printf "%s|%s" "$(def_of "$W0/hispeed_freq")" "$(grep -c "^$W0/hispeed_freq " "$DEF" 2>/dev/null)"')
++[ "$OUT" = "1286400|1" ] && ok "capture 替换畸形空快照行且不产生重复路径" || bad "畸形快照修复：[$OUT]"
++
++
++# ---- 29. stop_daemon 必须对“仍存活/身份不确定”返回失败（M3） ----
++OUT=$(run '
++    mkdir -p "$PROC/4242"
++    printf "4242 (sh) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 999\\n" > "$PROC/4242/stat"
++    printf "/system/bin/sh /data/adb/modules/smoothflow/bin/daemon.sh\\n" > "$PROC/4242/cmdline"
++    printf "4242 999\\n" > "$PIDF"
++    kill() { return 0; }
++    sleep() { :; }
++    pid_is_ours() { [ -d "$PROC/$1" ] && [ "$2" = daemon ]; }
++    stop_daemon >/dev/null 2>&1; _rc=$?
++    printf "%s|%s" "$_rc" "$(read_node "$PIDF")"
++')
++case "$OUT" in 1\|4242\ 999) ok "stop_daemon 对仍存活的 daemon 返回失败并保留 PID 记录" ;; *) bad "stop_daemon 活进程失败语义：[$OUT]" ;; esac
++OUT=$(run '
++    rm -rf "$PROC/4242"
++    kill() { return 0; }
++    sleep() { :; }
++    pid_is_ours() { [ -d "$PROC/$1" ] && [ "$2" = daemon ]; }
++    stop_daemon >/dev/null 2>&1; _rc=$?
++    printf "%s|" "$_rc"; if [ -e "$PIDF" ]; then printf present; else printf absent; fi
++')
++[ "$OUT" = "0|absent" ] && ok "daemon 进程消失后 stop_daemon 才报告成功并清理 PID" || bad "stop_daemon 已退出语义：[$OUT]"
++
++OUT=$(run '
++    mkdir -p "$PROC/4243"
++    printf "4243 (other worker) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 999\\n" > "$PROC/4243/stat"
++    printf "other_process\\n" > "$PROC/4243/cmdline"
++    printf "4243 999\\n" > "$PIDF"
++    kill() { printf called >> "$DATADIR/kill_called"; return 0; }
++    sleep() { :; }
++    pid_is_ours() { return 1; }
++    stop_daemon >/dev/null 2>&1; _rc=$?
++    printf "%s|" "$_rc"; if [ -e "$DATADIR/kill_called" ]; then printf killed; else printf untouched; fi
++')
++[ "$OUT" = "1|untouched" ] && ok "身份校验不通过时 stop_daemon 不误杀且返回失败" || bad "stop_daemon 误杀保护：[$OUT]"
++
++
++
++# ---- 30. 锁属主 PID 复用与活进程判定（M2） ----
++OUT=$(run '
++    mkdir -p "$PROC/4244" "$PROC/4245" "$DATA/lock-reused" "$DATA/lock-live"
++    printf "4244 (old owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 222\\n" > "$PROC/4244/stat"
++    printf "4245 (live owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 333\\n" > "$PROC/4245/stat"
++    printf "4244 111\\n" > "$DATA/lock-reused/pid"
++    printf "4245 333\\n" > "$DATA/lock-live/pid"
++    lock_owner_stale "$DATA/lock-reused"; _reused=$?
++    lock_owner_stale "$DATA/lock-live"; _live=$?
++    printf "%s|%s" "$_reused" "$_live"
++')
++[ "$OUT" = "0|1" ] && ok "锁回收识别 PID 重用，同时保护启动时间匹配的活属主" || bad "锁属主身份判定：[$OUT]"
++
+ printf '\n通过 %s 项，失败 %s 项\n' "$PASS" "$FAIL"
+ [ "$FAIL" = 0 ]
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/uninstall.sh /tmp/sf_batch/patch/SmoothFlow_5.0.4/uninstall.sh
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/uninstall.sh	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/uninstall.sh	2026-11-10 03:39:41.476961759 +0000
+@@ -1,11 +1,14 @@
+ #!/system/bin/sh
+-# SPDX-License-Identifier: MIT
++# SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+ case "$0" in */*) MODDIR=$(cd "${0%/*}" && pwd) ;; *) MODDIR=$(pwd) ;; esac
+ . "$MODDIR/bin/core.sh"
+ 
+ log "开始安全卸载"
+-stop_daemon
++if ! stop_daemon; then
++    log "卸载中止：守护进程未能确认停止；未执行恢复和数据归档，请重启后重试"
++    exit 1
++fi
+ if restore_all; then
+     log "卸载恢复流程完成；未改写系统分区"
+     # 只有确认恢复流程完成后才归档快照；失败时保留数据供重试。
+diff -ruN /tmp/sf_batch/orig/SmoothFlow_5.0.4/webroot/index.html /tmp/sf_batch/patch/SmoothFlow_5.0.4/webroot/index.html
+--- /tmp/sf_batch/orig/SmoothFlow_5.0.4/webroot/index.html	2026-11-09 05:03:06.000000000 +0000
++++ /tmp/sf_batch/patch/SmoothFlow_5.0.4/webroot/index.html	2026-11-10 03:39:41.477236040 +0000
+@@ -1,5 +1,5 @@
+ <!doctype html>
+-<!-- SPDX-License-Identifier: MIT -->
++<!-- SPDX-License-Identifier: GPL-3.0-only -->
+ <!-- Copyright (c) 2026 硕 -->
+ <html lang="zh-CN">
+ <head>

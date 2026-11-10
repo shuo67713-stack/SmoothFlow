@@ -1,0 +1,575 @@
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/CHANGELOG.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/CHANGELOG.md
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-10 03:49:58.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-10 04:33:21.615018337 +0000
+@@ -35,3 +35,11 @@
+ ## v5.0.0
+ 
+ - 基于 4.2.0 的安全维护和诊断状态说明版本。
++
++
++### Patch 3（候选）
++- 增加启动阶段陈旧 `.reap` 门禁恢复；恢复前要求 daemon/supervisor 不在运行，并验证门禁属主身份。
++- 增加 daemon 独立实例锁，串行化单实例判定和 PID 发布。
++- profile 锁释放统一校验 PID 与启动时间。
++- supervisor 增加有上限的指数退避与连续快速失败冷却，避免固定 10 秒无限重启。
++- 不修改任何 CPU/WALT/uclamp 调度默认值。
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-10 03:47:24.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-10 04:39:22.706483057 +0000
+@@ -65,3 +65,12 @@
+ ## 发布边界
+ 
+ 本候选包没有在 OPD2513 真机执行命令、没有写真实 `/sys`、没有安装或卸载。83 项隔离测试与 40 轮主机双进程锁测试不等于 Android 真机验证。不要直接将此审查包作为正式安装版发布。
++
++
++## Patch 3 变更（启动恢复与生命周期专项）
++- service 在 boot_completed 且旧 daemon/supervisor 已确认停止后，才检查 profile/supervisor/daemon 的 `.reap` 门禁；仅对 PID+启动时间确认死亡，或无有效 PID 且超过陈旧阈值的门禁执行隔离清理。活跃/身份不确定门禁保持 fail-closed。
++- daemon 增加独立目录锁，将单实例检查与 PID 文件发布放入同一锁区间，消除原 check-then-act 窄竞态。
++- `unlock_profile` 改为 PID+启动时间一致才释放。
++- supervisor 改为 10–300 秒指数退避；连续 8 次运行不足 60 秒触发 15 分钟冷却，冷却可响应停止标记；运行达到 60 秒后重置失败计数。
++- 上述恢复只在启动服务阶段执行，不在普通 action 路径清理门禁；仅在 gate PID 与启动时间均有效且可确认属主已死亡时清理。若 SIGKILL 发生在 gate 创建后、PID 文件发布前，属主无法证明，继续 fail-closed，不按目录年龄猜测删除。仍需 Android mksh/Toybox 和真实设备并发场景验证。
++- Patch 3 当前主机复测：Shell 语法检查通过；隔离自测 89 项通过；默认双进程锁竞争 40 轮通过。以上均非 Android 真机测试。
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-10 03:46:16.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-10 04:39:22.706681020 +0000
+@@ -9,6 +9,8 @@
+ - [x] CONTRIBUTING、SECURITY、CODE_OF_CONDUCT 文档。
+ - [x] GitHub Actions Shell 语法与隔离测试工作流。
+ - [x] uclamp 小数精度回归用例。
++- [x] Patch 3：daemon 单实例锁、陈旧 `.reap` 启动恢复、PID+启动时间释放校验、supervisor 指数退避与熔断冷却。
++- [x] Patch 3 主机隔离测试：89 项自测与默认 40 轮双进程锁竞争通过（不代表真机验证）。
+ - [x] 构建脚本、发布说明和 SHA-256 生成流程。
+ 
+ ## 公开发布前仍需维护者确认
+@@ -17,6 +19,7 @@
+ - [ ] 逐文件核对是否包含第三方复制代码、贴图、字体、商标或其它受限资源；如有，补全来源及许可证。
+ - [ ] 确认作者署名“硕”是希望公开展示的名称。
+ - [ ] 在 OPD2513 实机测试安装、升级、重启自启、日常 / 游戏 / 省电档切换、熄屏恢复和卸载恢复。
++- [ ] 真机验证 Android mksh/Toybox 的目录改名、stat、进程启动时间读取、daemon 锁并发、`.reap` 人为残留恢复，以及 supervisor 退避/冷却行为。
+ - [ ] 记录测试所用系统版本、内核版本和 Root 管理器版本。
+ - [ ] 不发布未经测量的 FPS、1% Low、帧时间、温度或功耗提升百分比。
+ - [ ] 检查发布包内没有私人日志、密钥、账号信息或设备个人数据。
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/PATCH3.diff /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/PATCH3.diff
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/PATCH3.diff	1970-01-01 00:00:00.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/PATCH3.diff	2026-11-10 04:40:32.049557830 +0000
+@@ -0,0 +1,51 @@
++diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/CHANGELOG.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/CHANGELOG.md
++--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-10 03:49:58.000000000 +0000
+++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/CHANGELOG.md	2026-11-10 04:33:21.615018337 +0000
++@@ -35,3 +35,11 @@
++ ## v5.0.0
++ 
++ - 基于 4.2.0 的安全维护和诊断状态说明版本。
+++
+++
+++### Patch 3（候选）
+++- 增加启动阶段陈旧 `.reap` 门禁恢复；恢复前要求 daemon/supervisor 不在运行，并验证门禁属主身份。
+++- 增加 daemon 独立实例锁，串行化单实例判定和 PID 发布。
+++- profile 锁释放统一校验 PID 与启动时间。
+++- supervisor 增加有上限的指数退避与连续快速失败冷却，避免固定 10 秒无限重启。
+++- 不修改任何 CPU/WALT/uclamp 调度默认值。
++diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md
++--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-10 03:47:24.000000000 +0000
+++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/MUSE_REVIEW_NOTES.md	2026-11-10 04:39:22.706483057 +0000
++@@ -65,3 +65,12 @@
++ ## 发布边界
++ 
++ 本候选包没有在 OPD2513 真机执行命令、没有写真实 `/sys`、没有安装或卸载。83 项隔离测试与 40 轮主机双进程锁测试不等于 Android 真机验证。不要直接将此审查包作为正式安装版发布。
+++
+++
+++## Patch 3 变更（启动恢复与生命周期专项）
+++- service 在 boot_completed 且旧 daemon/supervisor 已确认停止后，才检查 profile/supervisor/daemon 的 `.reap` 门禁；仅对 PID+启动时间确认死亡，或无有效 PID 且超过陈旧阈值的门禁执行隔离清理。活跃/身份不确定门禁保持 fail-closed。
+++- daemon 增加独立目录锁，将单实例检查与 PID 文件发布放入同一锁区间，消除原 check-then-act 窄竞态。
+++- `unlock_profile` 改为 PID+启动时间一致才释放。
+++- supervisor 改为 10–300 秒指数退避；连续 8 次运行不足 60 秒触发 15 分钟冷却，冷却可响应停止标记；运行达到 60 秒后重置失败计数。
+++- 上述恢复只在启动服务阶段执行，不在普通 action 路径清理门禁；仅在 gate PID 与启动时间均有效且可确认属主已死亡时清理。若 SIGKILL 发生在 gate 创建后、PID 文件发布前，属主无法证明，继续 fail-closed，不按目录年龄猜测删除。仍需 Android mksh/Toybox 和真实设备并发场景验证。
+++- Patch 3 当前主机复测：Shell 语法检查通过；隔离自测 89 项通过；默认双进程锁竞争 40 轮通过。以上均非 Android 真机测试。
++diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md
++--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-10 03:46:16.000000000 +0000
+++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/OPEN_SOURCE_RELEASE_CHECKLIST.md	2026-11-10 04:39:22.706681020 +0000
++@@ -9,6 +9,8 @@
++ - [x] CONTRIBUTING、SECURITY、CODE_OF_CONDUCT 文档。
++ - [x] GitHub Actions Shell 语法与隔离测试工作流。
++ - [x] uclamp 小数精度回归用例。
+++- [x] Patch 3：daemon 单实例锁、陈旧 `.reap` 启动恢复、PID+启动时间释放校验、supervisor 指数退避与熔断冷却。
+++- [x] Patch 3 主机隔离测试：89 项自测与默认 40 轮双进程锁竞争通过（不代表真机验证）。
++ - [x] 构建脚本、发布说明和 SHA-256 生成流程。
++ 
++ ## 公开发布前仍需维护者确认
++@@ -17,6 +19,7 @@
++ - [ ] 逐文件核对是否包含第三方复制代码、贴图、字体、商标或其它受限资源；如有，补全来源及许可证。
++ - [ ] 确认作者署名“硕”是希望公开展示的名称。
++ - [ ] 在 OPD2513 实机测试安装、升级、重启自启、日常 / 游戏 / 省电档切换、熄屏恢复和卸载恢复。
+++- [ ] 真机验证 Android mksh/Toybox 的目录改名、stat、进程启动时间读取、daemon 锁并发、`.reap` 人为残留恢复，以及 supervisor 退避/冷却行为。
++ - [ ] 记录测试所用系统版本、内核版本和 Root 管理器版本。
++ - [ ] 不发布未经测量的 FPS、1% Low、帧时间、温度或功耗提升百分比。
++ - [ ] 检查发布包内没有私人日志、密钥、账号信息或设备个人数据。
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/README.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/README.md
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/README.md	2026-11-10 03:46:16.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/README.md	2026-11-10 04:39:22.706032780 +0000
+@@ -27,7 +27,9 @@
+ - **省电模式**：限制 CPU 最高频率；不改 GPU 频率，也不绕过厂商温控。
+ - **条件恢复**：记录原始值和本模块最后写入值；恢复前校验节点白名单、值格式及写入归属。
+ - **冲突保护**：发现厂商或其它模块改写了同一节点时跳过，不强行覆盖。
+-- **进程清理**：daemon 退出时按 PID 与进程启动时间校验清理自身记录，避免正常退出后留下陈旧 PID 文件。
++- **进程清理**：daemon、supervisor 使用 PID 与启动时间校验；daemon 单实例入口由独立目录锁串行化。
++- **锁恢复**：boot_completed 后，只有在旧守护进程停止且锁属主确认失效时，才隔离清理遗留 `.reap` 门禁；活跃或身份不确定的门禁保持 fail-closed。
++- **重启保护**：supervisor 对短时崩溃采用 10–300 秒指数退避，连续 8 次快速失败后进入 15 分钟冷却。
+ - **状态面板**：展示 CPU/GPU 读取状态、当前模式和守护进程状态；面板中的 GPU 读数仅作监测，不参与调参。
+ 
+ ## 安全边界
+@@ -113,9 +115,10 @@
+ sh -n bin/daemon.sh
+ sh -n bin/supervisor.sh
+ sh tests/selftest.sh
++sh tests/lock_stress.sh
+ ```
+ 
+-**本次 5.0.4 发布包检查结果：** Shell 语法检查通过；隔离自测 75 项通过、0 项失败。该结果不是 OPD2513 实机测试，也不能证明实际游戏帧率、温度或功耗有所改善。
++**Patch 3 候选包主机验证结果：** Shell 语法检查通过；隔离自测 89 项通过、0 项失败；默认锁竞争测试 40 轮通过。该结果不是 OPD2513 实机测试，也不能证明实际游戏帧率、温度或功耗有所改善。
+ 
+ ## 项目结构
+ 
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md	2026-11-10 03:39:42.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/RELEASE_NOTES_v5.0.4.md	2026-11-10 04:39:22.706270022 +0000
+@@ -18,3 +18,19 @@
+ ## 已知限制
+ 
+ 本版本尚未完成 OPD2513 实机安装、游戏场景、长时间稳定性及性能基准测试。不要将本次隔离测试解读为 FPS、温度、续航或功耗提升证明。仅建议在目标设备上谨慎测试；安装前请阅读 README 中的升级恢复步骤。
++
++
++## Patch 3 候选更新（生命周期专项）
++
++- 启动服务在确认旧 daemon/supervisor 停止后，恢复属主已确认死亡的 `.reap` 门禁；活跃或身份不确定的门禁不清理。
++- daemon 增加独立实例锁，避免并发启动时的检查与 PID 发布竞态。
++- profile 锁释放增加启动时间比对。
++- supervisor 增加 10–300 秒指数退避；连续 8 次短于 60 秒退出后进入 15 分钟冷却。
++- 不改变 CPU/WALT/uclamp 默认调度参数。
++
++### Patch 3 候选验证
++
++- Shell 语法检查：通过。
++- 隔离自测：89 项通过，0 项失败。
++- 双进程锁竞争：默认 40 轮通过。
++- 尚未完成 Android mksh/Toybox 与 OPD2513 真机安装、重启、并发 action、卸载恢复和长时间挂机验证。
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/bin/core.sh /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/bin/core.sh
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/bin/core.sh	2026-11-10 03:48:14.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/bin/core.sh	2026-11-10 04:39:27.631874506 +0000
+@@ -26,6 +26,7 @@
+ PIDF=$DATADIR/daemon.pid
+ SUPIDF=$DATADIR/supervisor.pid
+ SUPLOCK=$DATADIR/supervisor.lock
++DAEMON_LOCK=$DATADIR/daemon.lock
+ STOPF=$DATADIR/stopped
+ TRASH=${SF_TRASH:-/data/adb/smoothflow_trash}
+ 
+@@ -1221,8 +1222,8 @@
+ 
+ # 锁回收采用短时 reaper gate 串行化。所有竞争者在 mkdir 主锁后再次检查 gate，
+ # 防止“旧锁已判死、新实例刚建锁”时另一个回收者拆掉新锁。
+-# 若 reaper gate 自身被 SIGKILL 留下，选择 fail-closed（记录日志并等待重启），
+-# 不尝试递归回收第二层锁，以免重新引入同类 TOCTOU。
++# gate 被 SIGKILL 留下时，普通运行路径保持 fail-closed；service 启动阶段只回收
++# PID+启动时间均可验证且属主已死亡的 gate，身份不明的 gate 继续保留。
+ lock_owner_stale() {
+     _los_dir=$1
+     _los_line=$(read_node "$_los_dir/pid" 2>/dev/null) || _los_line=
+@@ -1252,6 +1253,11 @@
+     _rld_gate="$_rld_dir.reap"
+     mkdir "$_rld_gate" 2>/dev/null || return 1
+     _rld_start=$(proc_start_time $$ 2>/dev/null) || _rld_start=
++    [ -n "$_rld_start" ] || {
++        rmdir "$_rld_gate" 2>/dev/null
++        log "无法读取回收门禁属主启动时间，拒绝回收锁"
++        return 1
++    }
+     _rld_tmp="$_rld_gate/pid.tmp.$$"
+     if ! printf '%s %s\n' "$$" "$_rld_start" > "$_rld_tmp" 2>/dev/null || ! mv -f "$_rld_tmp" "$_rld_gate/pid" 2>/dev/null; then
+         rm -f "$_rld_tmp" 2>/dev/null
+@@ -1283,6 +1289,11 @@
+                 continue
+             fi
+             _lp_self_start=$(proc_start_time $$ 2>/dev/null) || _lp_self_start=
++            [ -n "$_lp_self_start" ] || {
++                rmdir "$PROFILE_LOCK" 2>/dev/null
++                log "无法读取参数锁属主启动时间，拒绝本轮写入"
++                return 1
++            }
+             _lp_tmp="$PROFILE_LOCK/pid.tmp.$$"
+             if ! printf '%s %s\n' "$$" "$_lp_self_start" > "$_lp_tmp" 2>/dev/null || ! mv -f "$_lp_tmp" "$PROFILE_LOCK/pid" 2>/dev/null; then
+                 rm -f "$_lp_tmp" "$PROFILE_LOCK/pid" 2>/dev/null
+@@ -1309,7 +1320,8 @@
+ 
+ unlock_profile() {
+     _up_line=$(read_node "$PROFILE_LOCK/pid" 2>/dev/null) || _up_line=
+-    if [ "${_up_line%% *}" = "$$" ]; then
++    _up_start=$(proc_start_time $$ 2>/dev/null) || _up_start=
++    if [ -n "$_up_start" ] && [ "$_up_line" = "$$ $_up_start" ]; then
+         rm -f "$PROFILE_LOCK/pid" 2>/dev/null
+         rmdir "$PROFILE_LOCK" 2>/dev/null
+     fi
+@@ -1356,6 +1368,129 @@
+     pid_is_ours "$_sa_p" supervisor "$_sa_start"
+ }
+ 
++# daemon 独立实例锁：把“检查 PID 文件→发布 PID 文件”纳入同一原子锁区间。
++acquire_daemon_lock() {
++    _adl_tries=0
++    while [ "$_adl_tries" -lt 20 ]; do
++        [ -d "$DAEMON_LOCK.reap" ] && { sleep 0.2; _adl_tries=$((_adl_tries + 1)); continue; }
++        if mkdir "$DAEMON_LOCK" 2>/dev/null; then
++            if [ -d "$DAEMON_LOCK.reap" ]; then
++                rmdir "$DAEMON_LOCK" 2>/dev/null
++                sleep 0.2
++                _adl_tries=$((_adl_tries + 1))
++                continue
++            fi
++            _adl_start=$(proc_start_time $$ 2>/dev/null) || _adl_start=
++            [ -n "$_adl_start" ] || {
++                rmdir "$DAEMON_LOCK" 2>/dev/null
++                log "无法读取 daemon 锁属主启动时间，拒绝启动"
++                return 1
++            }
++            _adl_tmp="$DAEMON_LOCK/pid.tmp.$$"
++            if ! printf '%s %s\n' "$$" "$_adl_start" > "$_adl_tmp" 2>/dev/null || ! mv -f "$_adl_tmp" "$DAEMON_LOCK/pid" 2>/dev/null; then
++                rm -f "$_adl_tmp" "$DAEMON_LOCK/pid" 2>/dev/null
++                rmdir "$DAEMON_LOCK" 2>/dev/null
++                log "daemon 锁记录失败，拒绝启动"
++                return 1
++            fi
++            _adl_saved=$(read_node "$DAEMON_LOCK/pid" 2>/dev/null) || _adl_saved=
++            [ "$_adl_saved" = "$$ $_adl_start" ] || {
++                rm -f "$DAEMON_LOCK/pid" 2>/dev/null
++                rmdir "$DAEMON_LOCK" 2>/dev/null
++                log "daemon 锁归属校验失败，拒绝启动"
++                return 1
++            }
++            return 0
++        fi
++        if [ ! -d "$DAEMON_LOCK.reap" ]; then reap_lock_dir "$DAEMON_LOCK" || :; fi
++        sleep 0.2
++        _adl_tries=$((_adl_tries + 1))
++    done
++    log "daemon 锁被占用或回收门禁异常，拒绝重复启动"
++    return 1
++}
++
++release_daemon_lock() {
++    _rdl_line=$(read_node "$DAEMON_LOCK/pid" 2>/dev/null) || _rdl_line=
++    _rdl_start=$(proc_start_time $$ 2>/dev/null) || _rdl_start=${_adl_start:-}
++    if [ "$_rdl_line" = "$$ $_rdl_start" ]; then
++        rm -f "$DAEMON_LOCK/pid" 2>/dev/null
++        rmdir "$DAEMON_LOCK" 2>/dev/null
++    fi
++}
++
++# supervisor 退避状态机：输入运行秒数/连续快速失败次数/当前退避秒数，
++# 输出“新失败次数 新退避秒数 是否触发冷却”。运行满 60 秒视为恢复稳定。
++supervisor_backoff_update() {
++    _sbu_runtime=$1; _sbu_failures=$2; _sbu_backoff=$3
++    case "$_sbu_runtime" in ''|*[!0-9]*) return 1 ;; esac
++    case "$_sbu_failures" in ''|*[!0-9]*) return 1 ;; esac
++    case "$_sbu_backoff" in ''|*[!0-9]*) return 1 ;; esac
++    if [ "$_sbu_runtime" -ge 60 ]; then
++        _sbu_failures=0
++        _sbu_backoff=10
++    else
++        _sbu_failures=$((_sbu_failures + 1))
++        if [ "$_sbu_failures" -gt 1 ] && [ "$_sbu_backoff" -lt 300 ]; then
++            _sbu_backoff=$((_sbu_backoff * 2))
++            [ "$_sbu_backoff" -le 300 ] || _sbu_backoff=300
++        fi
++    fi
++    _sbu_trip=0
++    [ "$_sbu_failures" -ge 8 ] && _sbu_trip=1
++    printf '%s %s %s\n' "$_sbu_failures" "$_sbu_backoff" "$_sbu_trip"
++}
++
++# 对 .reap gate 使用更严格的属主判定：必须存在有效 PID 与启动时间。
++# gate 创建后、PID 文件发布前被杀死的情况无法证明属主已死亡，宁可 fail-closed。
++reap_gate_owner_stale() {
++    _rgos_dir=$1
++    _rgos_line=$(read_node "$_rgos_dir/pid" 2>/dev/null) || return 1
++    _rgos_pid=${_rgos_line%% *}
++    _rgos_start=${_rgos_line#* }
++    case "$_rgos_pid" in ''|*[!0-9]*) return 1 ;; esac
++    [ "$_rgos_pid" -gt 0 ] 2>/dev/null || return 1
++    [ -n "$_rgos_start" ] && [ "$_rgos_start" != "$_rgos_line" ] || return 1
++    [ -d "$PROC/$_rgos_pid" ] || return 0
++    _rgos_live=$(proc_start_time "$_rgos_pid" 2>/dev/null) || return 1
++    [ -n "$_rgos_live" ] || return 1
++    [ "$_rgos_live" != "$_rgos_start" ]
++}
++
++# 仅由 boot_completed 后的 service 阶段调用。运行中的 daemon/supervisor 或
++# 活跃/身份不确定的 gate 一律保留；只隔离已确认死亡属主的遗留 gate。
++recover_stale_reap_gate() {
++    _rsrg_gate=$1
++    [ -d "$_rsrg_gate" ] || return 0
++    reap_gate_owner_stale "$_rsrg_gate" || {
++        log "保留非陈旧或身份不确定的回收门禁：$_rsrg_gate"
++        return 1
++    }
++    # 复核后再原子改名；普通锁竞争者只会等待现有 gate，不会自行删除 gate。
++    reap_gate_owner_stale "$_rsrg_gate" || return 1
++    _rsrg_quarantine="$_rsrg_gate.stale.$$.$(date +%s)"
++    [ ! -e "$_rsrg_quarantine" ] || return 1
++    if mv "$_rsrg_gate" "$_rsrg_quarantine" 2>/dev/null; then
++        rm -rf "$_rsrg_quarantine" 2>/dev/null || {
++            log "遗留门禁已隔离但清理失败：$_rsrg_quarantine"
++            return 1
++        }
++        log "已恢复被强制终止遗留的回收门禁：$_rsrg_gate"
++        return 0
++    fi
++    return 1
++}
++
++recover_stale_reap_gates() {
++    daemon_alive && { log "daemon 仍运行，跳过回收门禁恢复"; return 1; }
++    supervisor_alive && { log "supervisor 仍运行，跳过回收门禁恢复"; return 1; }
++    _rsrg_rc=0
++    for _rsrg_path in "$PROFILE_LOCK.reap" "$SUPLOCK.reap" "$DAEMON_LOCK.reap"; do
++        recover_stale_reap_gate "$_rsrg_path" || _rsrg_rc=1
++    done
++    return "$_rsrg_rc"
++}
++
+ # supervisor 使用独立目录锁，避免 service.sh 和手动 start 并发拉起多个实例。
+ acquire_supervisor_lock() {
+     _asl_tries=0
+@@ -1369,6 +1504,11 @@
+                 continue
+             fi
+             _asl_start=$(proc_start_time $$ 2>/dev/null) || _asl_start=
++            [ -n "$_asl_start" ] || {
++                rmdir "$SUPLOCK" 2>/dev/null
++                log "无法读取 supervisor 锁属主启动时间，拒绝启动"
++                return 1
++            }
+             _asl_tmp="$SUPLOCK/pid.tmp.$$"
+             if ! printf '%s %s\n' "$$" "$_asl_start" > "$_asl_tmp" 2>/dev/null || ! mv -f "$_asl_tmp" "$SUPLOCK/pid" 2>/dev/null; then
+                 rm -f "$_asl_tmp" "$SUPLOCK/pid" 2>/dev/null
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/bin/daemon.sh /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/bin/daemon.sh
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/bin/daemon.sh	2026-11-10 03:40:40.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/bin/daemon.sh	2026-11-10 04:33:21.613659324 +0000
+@@ -7,15 +7,25 @@
+ MODDIR=$(cd "${0%/*}/.." && pwd)
+ . "$MODDIR/bin/core.sh"
+ 
+-daemon_alive && { log "检测到已有 daemon 实例，拒绝重复启动"; exit 0; }
++if ! acquire_daemon_lock; then
++    log "daemon 已运行或锁状态不明确，拒绝重复启动"
++    exit 0
++fi
++if daemon_alive; then
++    release_daemon_lock
++    log "检测到已有 daemon 实例，拒绝重复启动"
++    exit 0
++fi
+ _daemon_start=$(proc_start_time $$ 2>/dev/null) || _daemon_start=
+ [ -n "$_daemon_start" ] || {
+     log "无法读取 daemon 启动时间，拒绝进入后台循环"
++    release_daemon_lock
+     exit 1
+ }
+ cleanup_daemon() {
+     _cd_now=$(read_node "$PIDF" 2>/dev/null) || _cd_now=
+     [ "$_cd_now" = "$$ $_daemon_start" ] && rm -f "$PIDF" 2>/dev/null
++    release_daemon_lock
+ }
+ # 正常退出、停止标记退出及信号退出均清理自身 PID 文件；不碰其它实例的记录。
+ trap 'cleanup_daemon' EXIT
+@@ -24,11 +34,14 @@
+ if ! printf '%s %s\n' "$$" "$_daemon_start" > "$_daemon_pid_tmp" 2>/dev/null || ! mv -f "$_daemon_pid_tmp" "$PIDF" 2>/dev/null; then
+     rm -f "$_daemon_pid_tmp" 2>/dev/null
+     log "daemon PID 文件写入失败，拒绝进入后台循环"
++    release_daemon_lock
+     exit 1
+ fi
+ _daemon_saved=$(read_node "$PIDF" 2>/dev/null) || _daemon_saved=
+ if [ "$_daemon_saved" != "$$ $_daemon_start" ]; then
+     log "daemon PID 文件读回校验失败，拒绝进入后台循环"
++    rm -f "$_daemon_pid_tmp" 2>/dev/null
++    release_daemon_lock
+     exit 1
+ fi
+ log "守护进程启动 pid=$$ 节拍=10s 快路径=procfs"
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/bin/supervisor.sh /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/bin/supervisor.sh
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/bin/supervisor.sh	2026-11-10 03:47:04.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/bin/supervisor.sh	2026-11-10 04:39:22.705482595 +0000
+@@ -1,7 +1,7 @@
+ #!/system/bin/sh
+ # SPDX-License-Identifier: GPL-3.0-only
+ # Copyright (c) 2026 硕
+-# SmoothFlow 5.0.4 看门狗：daemon 意外退出时按 10 秒退避重新拉起
++# SmoothFlow 5.0.4 看门狗：daemon 意外退出时指数退避重试并对连续快速失败冷却
+ MODDIR=$(cd "${0%/*}/.." && pwd)
+ . "$MODDIR/bin/core.sh"
+ 
+@@ -28,12 +28,45 @@
+ trap 'cleanup_supervisor; exit 0' HUP INT TERM
+ trap 'cleanup_supervisor' EXIT
+ log "supervisor 启动 pid=$$"
++_backoff=10
++_failures=0
+ 
+ while :; do
+     is_stopped && { log "收到停止标记，supervisor 退出"; exit 0; }
+     [ -f "$MODDIR/bin/daemon.sh" ] || { log "daemon.sh 缺失，supervisor 退出"; exit 1; }
++    _daemon_started_at=$(date +%s 2>/dev/null); case "$_daemon_started_at" in ''|*[!0-9]*) _daemon_started_at=0 ;; esac
+     sh "$MODDIR/bin/daemon.sh"
+     is_stopped && { log "停止标记已置位，supervisor 退出"; exit 0; }
+-    log "daemon 退出，10 秒后重新拉起"
+-    sleep 10
++    _now=$(date +%s 2>/dev/null); case "$_now" in ''|*[!0-9]*) _now=0 ;; esac
++    _runtime=0
++    if [ "$_daemon_started_at" -gt 0 ] 2>/dev/null && [ "$_now" -ge "$_daemon_started_at" ] 2>/dev/null; then
++        _runtime=$((_now - _daemon_started_at))
++    fi
++    _backoff_state=$(supervisor_backoff_update "$_runtime" "$_failures" "$_backoff") || {
++        log "supervisor 退避状态计算失败，安全退出"
++        exit 1
++    }
++    set -- $_backoff_state
++    _failures=$1; _backoff=$2; _trip=$3
++    if [ "$_trip" = 1 ]; then
++        log "daemon 连续快速失败 ${_failures} 次，触发 15 分钟熔断冷却"
++        _cool=900
++        while [ "$_cool" -gt 0 ]; do
++            is_stopped && { log "冷却期间收到停止标记，supervisor 退出"; exit 0; }
++            _step=10; [ "$_cool" -lt 10 ] && _step=$_cool
++            sleep "$_step"
++            _cool=$((_cool - _step))
++        done
++        _failures=0
++        _backoff=10
++        continue
++    fi
++    log "daemon 退出（运行 ${_runtime}s），${_backoff}s 后重试；连续快速失败=${_failures}"
++    _wait=$_backoff
++    while [ "$_wait" -gt 0 ]; do
++        is_stopped && { log "等待重试期间收到停止标记，supervisor 退出"; exit 0; }
++        _step=10; [ "$_wait" -lt 10 ] && _step=$_wait
++        sleep "$_step"
++        _wait=$((_wait - _step))
++    done
+ done
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/scripts/package.sh /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/scripts/package.sh
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/scripts/package.sh	2026-11-10 03:46:16.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/scripts/package.sh	2026-11-10 04:37:06.081940803 +0000
+@@ -20,7 +20,7 @@
+ }
+ 
+ for item in module.prop post-fs-data.sh service.sh action.sh uninstall.sh \
+-            config.example.sh README.md CHANGELOG.md LICENSE NOTICE.md bin tests webroot; do
++            config.example.sh README.md CHANGELOG.md RELEASE_NOTES_v5.0.4.md LICENSE NOTICE.md bin tests webroot; do
+     copy_item "$item"
+ done
+ 
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/service.sh /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/service.sh
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/service.sh	2026-11-10 03:39:42.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/service.sh	2026-11-10 04:38:21.049404385 +0000
+@@ -31,13 +31,17 @@
+     log "CPU policy 检查完成（等待 $((n * 2))s）：低=$CPU0 高=$CPU6 容量=$CPU_LOW_SCORE/$CPU_HIGH_SCORE"
+ fi
+ 
+-# 锁回收统一由 core.sh 的串行化回收协议负责；service 不独立拆锁。
++# 主锁残留仍由 core.sh 串行化回收；启动阶段另调用受限的 gate 恢复函数。
+ 
+ # 已有守护进程先停掉，避免与启动阶段的应用竞争
+ if [ -f "$PIDF" ] || [ -f "$SUPIDF" ]; then
+     stop_daemon || { log "旧守护进程未能确认停止，拒绝启动新实例"; exit 1; }
+ fi
+ 
++# 只有在旧守护进程已停止后，才恢复被 SIGKILL 留下的陈旧 .reap 门禁。
++# 活跃 action/锁持有者的 PID+启动时间会阻止清理；不确定状态保持 fail-closed。
++recover_stale_reap_gates || log "部分回收门禁未能安全恢复；相关锁操作将继续 fail-closed"
++
+ if [ "$ready" = 1 ]; then
+     # 系统启动完成且目标节点就绪后，才采集厂商最终值。
+     capture_all
+diff -ruN /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/tests/selftest.sh /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/tests/selftest.sh
+--- /mnt/data/sf_patch3_original/SmoothFlow_5.0.4/tests/selftest.sh	2026-11-10 03:49:14.000000000 +0000
++++ /mnt/data/sf_patch3_work/SmoothFlow_5.0.4/tests/selftest.sh	2026-11-10 04:39:22.705802329 +0000
+@@ -102,7 +102,14 @@
+ printf 'com.android.launcher3\n' > "$PROC/101/cmdline"
+ printf '100\n101\n' > "$CG/top-app/cgroup.procs"
+ 
+-run() { sh -c ". '$CORE'; $1"; }
++run() {
++    SF_TEST_CORE="$CORE" SF_TEST_COMMAND="$1" sh -c '
++        mkdir -p "$SF_PROC/$$"
++        printf "%s (selftest runner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12345\n" "$$" > "$SF_PROC/$$/stat"
++        . "$SF_TEST_CORE"
++        eval "$SF_TEST_COMMAND"
++    '
++}
+ 
+ # ---- 1. 拓扑识别 ----
+ OUT=$(run 'printf "%s|%s|%s|%s\n" "$CPU_TOPOLOGY_OK" "${CPU0##*/}" "${CPU6##*/}" "$WALT_OK"')
+@@ -471,5 +478,63 @@
+ ')
+ [ "$OUT" = "0|1" ] && ok "锁回收识别 PID 重用，同时保护启动时间匹配的活属主" || bad "锁属主身份判定：[$OUT]"
+ 
++# ---- 31. daemon 锁将单实例入口串行化 ----
++OUT=$(run '
++    sleep() { :; }
++    mkdir -p "$PROC/$$"
++    acquire_daemon_lock; _first=$?
++    acquire_daemon_lock >/dev/null 2>&1; _second=$?
++    release_daemon_lock
++    if [ -d "$DAEMON_LOCK" ]; then _left=present; else _left=absent; fi
++    printf "%s|%s|%s" "$_first" "$_second" "$_left"
++')
++[ "$OUT" = "0|1|absent" ] && ok "daemon 锁允许首实例并拒绝并发第二实例，释放后无残留" || bad "daemon 单实例锁：[$OUT]"
++
++# ---- 32. 启动恢复只回收确认死亡的 .reap gate ----
++OUT=$(run '
++    mkdir -p "$DATA/profile.lock.reap" "$DATA/supervisor.lock.reap" "$DATA/daemon.lock.reap" "$PROC/4246"
++    printf "99999999 1\\n" > "$DATA/profile.lock.reap/pid"
++    printf "4246 (active reaper) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 444\\n" > "$PROC/4246/stat"
++    printf "4246 444\\n" > "$DATA/supervisor.lock.reap/pid"
++    recover_stale_reap_gate "$DATA/profile.lock.reap"; _dead=$?
++    recover_stale_reap_gate "$DATA/supervisor.lock.reap" >/dev/null 2>&1; _active=$?
++    recover_stale_reap_gate "$DATA/daemon.lock.reap" >/dev/null 2>&1; _unknown=$?
++    if [ -d "$DATA/profile.lock.reap" ]; then _dead_left=1; else _dead_left=0; fi
++    if [ -d "$DATA/supervisor.lock.reap" ]; then _active_left=1; else _active_left=0; fi
++    if [ -d "$DATA/daemon.lock.reap" ]; then _unknown_left=1; else _unknown_left=0; fi
++    printf "%s|%s|%s|%s|%s|%s" "$_dead" "$_active" "$_unknown" "$_dead_left" "$_active_left" "$_unknown_left"
++')
++[ "$OUT" = "0|1|1|0|1|1" ] && ok "启动恢复只清除确认死亡属主 gate，保留活跃及身份不明 gate" || bad "reap gate 恢复保护：[$OUT]"
++
++# ---- 33. profile unlock 必须同时匹配 PID 与启动时间 ----
++OUT=$(run '
++    mkdir -p "$PROFILE_LOCK"
++    _start=$(proc_start_time $$ 2>/dev/null) || _start=
++    printf "%s %s\\n" "$$" wrong-start > "$PROFILE_LOCK/pid"
++    unlock_profile
++    if [ -d "$PROFILE_LOCK" ]; then _wrong=kept; else _wrong=removed; fi
++    printf "%s %s\\n" "$$" "$_start" > "$PROFILE_LOCK/pid"
++    unlock_profile
++    if [ -d "$PROFILE_LOCK" ]; then _right=kept; else _right=removed; fi
++    printf "%s|%s" "$_wrong" "$_right"
++')
++[ "$OUT" = "kept|removed" ] && ok "profile unlock 同时校验 PID 与启动时间" || bad "profile unlock 身份校验：[$OUT]"
++
++# ---- 34. supervisor 指数退避、上限、熔断与稳定恢复 ----
++OUT=$(run '
++    _fail=0; _back=10; _seq=
++    _i=0
++    while [ "$_i" -lt 8 ]; do
++        _state=$(supervisor_backoff_update 0 "$_fail" "$_back") || exit 2
++        set -- $_state
++        _fail=$1; _back=$2; _trip=$3
++        _seq="$_seq$_fail:$_back:$_trip "
++        _i=$((_i + 1))
++    done
++    _reset=$(supervisor_backoff_update 60 "$_fail" "$_back")
++    printf "%s|%s" "$_seq" "$_reset"
++')
++[ "$OUT" = "1:10:0 2:20:0 3:40:0 4:80:0 5:160:0 6:300:0 7:300:0 8:300:1 |0 10 0" ] && ok "supervisor 退避 10→300 秒、8 次熔断、稳定运行后重置" || bad "supervisor 退避状态机：[$OUT]"
++
+ printf '\n通过 %s 项，失败 %s 项\n' "$PASS" "$FAIL"
+ [ "$FAIL" = 0 ]

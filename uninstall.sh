@@ -5,7 +5,10 @@ case "$0" in */*) MODDIR=$(cd "${0%/*}" && pwd) ;; *) MODDIR=$(pwd) ;; esac
 . "$MODDIR/bin/core.sh"
 
 log "开始安全卸载"
-stop_daemon
+if ! stop_daemon; then
+    log "卸载中止：守护进程未能确认停止；未执行恢复和数据归档，请重启后重试"
+    exit 1
+fi
 if restore_all; then
     log "卸载恢复流程完成；未改写系统分区"
     # 只有确认恢复流程完成后才归档快照；失败时保留数据供重试。

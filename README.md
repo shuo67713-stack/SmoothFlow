@@ -1,14 +1,10 @@
 # SmoothFlow 5.0.4 — OPD2513
 
-[![Release](https://img.shields.io/github/v/release/shuo67713-stack/SmoothFlow)](https://github.com/shuo67713-stack/SmoothFlow/releases/tag/v5.0.4)
-[![License](https://img.shields.io/github/license/shuo67713-stack/SmoothFlow)](https://github.com/shuo67713-stack/SmoothFlow/blob/main/LICENSE)
-[![Shell tests](https://img.shields.io/github/actions/workflow/status/shuo67713-stack/SmoothFlow/test.yml?branch=main)](https://github.com/shuo67713-stack/SmoothFlow/actions/workflows/test.yml)
-
 **面向 OnePlus Pad 3 Pro（OPD2513）的低开销 CPU 调度模块。**
 
 SmoothFlow 根据屏幕状态和前台应用切换 CPU 调度档位，采用逐节点快照、写入归属记录和条件恢复机制，尽量避免与厂商服务或其它调度模块争抢参数。
 
-> **当前状态：已在 OPD2513 真机完成 5.0.4 实机验收，实测帧率、温度与续航均有提升。**
+> **当前状态：源码与隔离测试已整理；尚未完成 5.0.4 的 OPD2513 实机验收。** 本仓库不提供虚构的 FPS、1% Low、帧时间、温度或功耗提升数据。
 
 ## 项目范围
 
@@ -31,7 +27,9 @@ SmoothFlow 根据屏幕状态和前台应用切换 CPU 调度档位，采用逐�
 - **省电模式**：限制 CPU 最高频率；不改 GPU 频率，也不绕过厂商温控。
 - **条件恢复**：记录原始值和本模块最后写入值；恢复前校验节点白名单、值格式及写入归属。
 - **冲突保护**：发现厂商或其它模块改写了同一节点时跳过，不强行覆盖。
-- **进程清理**：daemon 退出时按 PID 与进程启动时间校验清理自身记录，避免正常退出后留下陈旧 PID 文件。
+- **进程清理**：daemon、supervisor 使用 PID 与启动时间校验；daemon 单实例入口由独立目录锁串行化。
+- **锁恢复**：boot_completed 后，只有在旧守护进程停止且锁属主确认失效时，才隔离清理遗留 `.reap` 门禁；活跃或身份不确定的门禁保持 fail-closed。
+- **重启保护**：supervisor 对短时崩溃采用 10–300 秒指数退避，连续 8 次快速失败后进入 15 分钟冷却。
 - **状态面板**：展示 CPU/GPU 读取状态、当前模式和守护进程状态；面板中的 GPU 读数仅作监测，不参与调参。
 
 ## 安全边界
@@ -117,9 +115,10 @@ sh -n bin/core.sh
 sh -n bin/daemon.sh
 sh -n bin/supervisor.sh
 sh tests/selftest.sh
+sh tests/lock_stress.sh
 ```
 
-**本次 5.0.4 发布包检查结果：** Shell 语法检查通过；隔离自测 75 项通过、0 项失败；并已在 OPD2513 真机上完成安装与性能实测，实测帧率、温度与续航均有提升。
+**Patch 3 候选包主机验证结果：** Shell 语法检查通过；隔离自测 89 项通过、0 项失败；默认锁竞争测试 40 轮通过。该结果不是 OPD2513 实机测试，也不能证明实际游戏帧率、温度或功耗有所改善。
 
 ## 项目结构
 
@@ -161,7 +160,16 @@ sh tests/selftest.sh
 
 ## 许可证
 
-本仓库采用 GNU 通用公共许可证第三版（GPL-3.0）。你可以自由使用、修改和再分发本软件，但分发修改版本时必须以相同许可证开放源代码，并保留版权和许可声明。维护者已在首次公开发布前确认：所有纳入内容均有权按 GPL-3.0 发布。
+本仓库采用 GNU General Public License v3.0（GPL-3.0-only）。分发本项目或其衍生作品时，应遵守 GPL-3.0 的完整条款，并保留版权与许可证声明。
+
+### 恢复语义与边界
+
+- 基线是模块在本次启动周期内、首次写入某个节点之前成功读取的值，不等同于 ROM 出厂值。
+- 只有当节点当前值仍等于 SmoothFlow 最后一次登记的写入值时，模块才会恢复基线。
+- 如果检测到其它服务或模块已改写该节点，SmoothFlow 会放弃该节点的管理并保留外部值；因此卸载不保证覆盖外部接管后的值。
+- 节点不可读、不可写或快照不完整时，模块采取 fail-closed：跳过对应写入或报告恢复失败，不伪报成功。
+- 锁回收使用短时 `.reap` 门禁；若该门禁在持有期间遭到不可捕获的 SIGKILL，模块会拒绝继续争抢锁，重启后可清除残留状态。
+
 
 ## 致谢与研究参考
 

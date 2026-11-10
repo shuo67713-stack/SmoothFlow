@@ -202,7 +202,10 @@ case "$1" in
         fi
         ;;
     off)
-        stop_daemon
+        if ! stop_daemon; then
+            printf '✗ 守护进程未能确认停止；为避免并发写入，本次不执行恢复\n'
+            exit 1
+        fi
         if restore_all; then
             write_state off ""
             printf '✓ 已停止守护并恢复模块管理的参数\n'
@@ -228,7 +231,10 @@ case "$1" in
         ;;
     restore)
         set_game_force 0
-        stop_daemon
+        if ! stop_daemon; then
+            printf '✗ 守护进程未能确认停止；为避免并发写入，本次不执行恢复\n'
+            exit 1
+        fi
         if restore_all; then
             write_state off ""
             printf '✓ 已停止守护并恢复模块管理的参数；如需重新运行，请执行 start\n'
@@ -304,7 +310,7 @@ case "$1" in
             fi
             exit 0
         fi
-        stop_daemon
+        stop_daemon || { printf '✗ 旧守护进程未能确认停止，拒绝启动新实例\n'; exit 1; }
         set_stopped 0
         if command -v setsid >/dev/null 2>&1; then
             setsid sh "$MODDIR/bin/supervisor.sh" >/dev/null 2>&1 &
@@ -325,8 +331,12 @@ case "$1" in
         fi
         ;;
     stop)
-        stop_daemon
-        printf '✓ 守护进程已停止\n'
+        if stop_daemon; then
+            printf '✓ 守护进程已停止\n'
+        else
+            printf '✗ 未能确认守护进程停止；请检查日志，勿视为成功\n'
+            exit 1
+        fi
         ;;
     frame)
         printf 'SmoothFlow 5.0.4 帧时间反馈状态\n'
