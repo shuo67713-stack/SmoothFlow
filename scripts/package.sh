@@ -20,13 +20,13 @@ copy_item() {
 }
 
 for item in module.prop post-fs-data.sh service.sh action.sh uninstall.sh \
-            config.example.sh README.md CHANGELOG.md LICENSE NOTICE.md bin tests webroot; do
+            config.example.sh README.md CHANGELOG.md RELEASE_NOTES_v5.0.4.md LICENSE NOTICE.md bin tests webroot; do
     copy_item "$item"
 done
 
 # Runtime entrypoints must remain executable in the ZIP.
 chmod 755 "$TMP/post-fs-data.sh" "$TMP/service.sh" "$TMP/action.sh" "$TMP/uninstall.sh" \
-          "$TMP/bin/core.sh" "$TMP/bin/daemon.sh" "$TMP/bin/supervisor.sh" "$TMP/tests/selftest.sh"
+          "$TMP/bin/core.sh" "$TMP/bin/daemon.sh" "$TMP/bin/supervisor.sh" "$TMP/tests/selftest.sh" "$TMP/tests/lock_stress.sh"
 chmod 644 "$TMP/config.example.sh"
 
 ZIP="$OUT/SmoothFlow_5.0.4_OPD2513.zip"
