@@ -222,7 +222,7 @@ refresh_cpu_policies
 # 不接受调用环境注入的参数；所有参数使用模块默认值或受限配置文件。
 unset ON_HS_POLICY ON_HS0 ON_LOAD0 ON_RTG0 ON_MIN0 ON_HS6 ON_LOAD6 ON_RTG6 ON_MIN6 ON_DOWN_RATE ON_MAX0 ON_UP_RATE \
       DISPLAY_UCLAMP TOP_UCLAMP GAME_UCLAMP GAME_HS0 GAME_LOAD0 GAME_RTG0 GAME_MIN0 GAME_HS6 GAME_LOAD6 GAME_RTG6 GAME_MIN6 GAME_DOWN_RATE GAME_UP_RATE \
-      ECO_MAX0 ECO_MAX6 ECO_MIN0 ECO_MIN6 ECO_HS0 ECO_HS6 ECO_LOAD ECO_UCLAMP GAME_PATTERNS
+      ECO_MAX0 ECO_MAX6 ECO_MIN0 ECO_MIN6 ECO_HS0 ECO_HS6 ECO_LOAD ECO_UCLAMP GAME_PATTERNS CONFLICT_SETTLE_SECS
 
 # 日常档：轻量 WALT 调度，不抬高常驻最低频率
 : "${ON_HS0:=1497600}"
@@ -263,6 +263,10 @@ unset ON_HS_POLICY ON_HS0 ON_LOAD0 ON_RTG0 ON_MIN0 ON_HS6 ON_LOAD6 ON_RTG6 ON_MI
 : "${ECO_LOAD:=92}"
 : "${ECO_UCLAMP:=0}"
 : "${GAME_PATTERNS:=com.tencent.tmgp.* com.tencent.ig* com.tencent.*.game* com.miHoYo.* com.mihoyo.* com.hoyoverse.* com.netease.* com.hypergryph.* com.papegames.* com.yostar.* com.bilibili.game* com.bilibili.sy* com.ztgame.* com.qookkagames.* com.supercell.* com.roblox.* com.mojang.* com.epicgames.* com.activision.* com.ea.* com.gameloft.* com.netmarble.* com.krafton.* com.pubg.* com.garena.* com.dts.freefire* com.innersloth.* com.tgc.sky.* com.sega.* com.capcom.* com.bandainamcoent.* com.square_enix.* jp.konami.* com.king.* com.zynga.* com.playdemic.* com.scopely.* com.hermes.* com.youzu.* com.eyougame.*}"
+
+# [本地补丁] 冲突自愈窗口：厂商把节点改回后，若当前值稳定 N 秒未再变化，
+# 则采纳该值为新基线并重试写入。0 = 关闭（恢复上游"永久跳过"语义）。
+: "${CONFLICT_SETTLE_SECS:=120}"
 
 # 安全配置解析：只接受白名单 KEY=value，不执行配置文件中的 Shell 代码。
 # 支持简单双引号；不支持变量展开/命令替换/行尾注释。
@@ -326,6 +330,12 @@ load_config() {
                     *) GAME_PATTERNS=$_val ;;
                 esac
                 ;;
+            CONFLICT_SETTLE_SECS)
+                case "$_val" in
+                    ''|*[!0-9]*) log "配置 CONFLICT_SETTLE_SECS 只接受非负整数，忽略该项" ;;
+                    *) CONFLICT_SETTLE_SECS=$_val ;;
+                esac
+                ;;
         esac
     done < "$_cfg"
 }
@@ -360,7 +370,11 @@ validate_config() {
         [ "$_vc_v" -le 10000000 ] 2>/dev/null || _vc_v=0
         eval "$_vc_k=\$_vc_v"
     done
+    # [本地补丁] 冲突自愈窗口：0 = 关闭；上限 86400 秒（1 天）。
+    case "$CONFLICT_SETTLE_SECS" in ''|*[!0-9]*) CONFLICT_SETTLE_SECS=120 ;; esac
+    [ "$CONFLICT_SETTLE_SECS" -le 86400 ] 2>/dev/null || CONFLICT_SETTLE_SECS=86400
 }
+
 validate_config
 
 # ---------- 快照记录（纯 Shell，无 awk/sed 子进程） ----------
@@ -632,6 +646,144 @@ restore_owned_paths() {
     for _rp_p in $1; do restore_one_if_owned "$_rp_p"; done
 }
 
+# ---------- [本地补丁] 冲突自愈 ----------
+# 背景：厂商 perf HAL 会在模块写入后把节点改回原值。上游实现只在
+# "当前值 == 模块最后写入值" 时才允许写入，一旦被改回该节点就永久跳过。
+# 本补丁记录冲突状态 (path|value|since|adopt_count)：若当前值连续
+# CONFLICT_SETTLE_SECS 秒未被再次改写，则采纳它为新的归属/基线并重试写入。
+# adopt_count 用于指数退避（settle × (n+1)），避免与厂商高频互刷。
+# CONFLICT_SETTLE_SECS=0 时完全恢复上游行为。
+
+CONFLICTF=$DATADIR/conflict.state
+
+conflict_rec_read() {   # path -> "value|since|count"
+    [ -n "$1" ] && [ -f "$CONFLICTF" ] || return 0
+    while IFS= read -r _crr_line; do
+        case "$_crr_line" in
+            "$1|"*) printf '%s\n' "${_crr_line#*|}"; return 0 ;;
+        esac
+    done < "$CONFLICTF"
+}
+
+conflict_rec_write() {  # path value since count
+    _crw_tmp="$CONFLICTF.tmp.$$"
+    : > "$_crw_tmp" 2>/dev/null || return 1
+    if [ -f "$CONFLICTF" ]; then
+        while IFS= read -r _crw_line; do
+            [ -n "$_crw_line" ] || continue
+            case "$_crw_line" in
+                "$1|"*) continue ;;
+            esac
+            printf '%s\n' "$_crw_line" >> "$_crw_tmp" 2>/dev/null || {
+                rm -f "$_crw_tmp" 2>/dev/null
+                return 1
+            }
+        done < "$CONFLICTF"
+    fi
+    printf '%s|%s|%s|%s\n' "$1" "$2" "$3" "$4" >> "$_crw_tmp" 2>/dev/null || {
+        rm -f "$_crw_tmp" 2>/dev/null
+        return 1
+    }
+    mv -f "$_crw_tmp" "$CONFLICTF" 2>/dev/null || {
+        rm -f "$_crw_tmp" 2>/dev/null
+        return 1
+    }
+}
+
+conflict_forget() {     # path
+    [ -n "$1" ] && [ -f "$CONFLICTF" ] || return 0
+    _cf_tmp="$CONFLICTF.tmp.$$"
+    : > "$_cf_tmp" 2>/dev/null || return 1
+    while IFS= read -r _cf_line; do
+        [ -n "$_cf_line" ] || continue
+        case "$_cf_line" in
+            "$1|"*) continue ;;
+        esac
+        printf '%s\n' "$_cf_line" >> "$_cf_tmp" 2>/dev/null || {
+            rm -f "$_cf_tmp" 2>/dev/null
+            return 1
+        }
+    done < "$CONFLICTF"
+    mv -f "$_cf_tmp" "$CONFLICTF" 2>/dev/null || {
+        rm -f "$_cf_tmp" 2>/dev/null
+        return 1
+    }
+}
+
+# 覆盖 DEF 中已存在的基线值；不存在的路径不新建（交给 capture 处理）。
+set_baseline() {        # path value
+    _sb_f=$1
+    _sb_v=$2
+    [ -n "$_sb_f" ] && [ -n "$_sb_v" ] || return 1
+    [ -f "$DEF" ] || return 1
+    _sb_tmp="$DEF.tmp.$$"
+    : > "$_sb_tmp" 2>/dev/null || return 1
+    _sb_hit=0
+    while IFS= read -r _sb_line; do
+        [ -n "$_sb_line" ] || continue
+        case "$_sb_line" in
+            "$_sb_f "*)
+                printf '%s %s\n' "$_sb_f" "$_sb_v" >> "$_sb_tmp" 2>/dev/null || {
+                    rm -f "$_sb_tmp" 2>/dev/null
+                    return 1
+                }
+                _sb_hit=1
+                ;;
+            *)
+                printf '%s\n' "$_sb_line" >> "$_sb_tmp" 2>/dev/null || {
+                    rm -f "$_sb_tmp" 2>/dev/null
+                    return 1
+                }
+                ;;
+        esac
+    done < "$DEF"
+    if [ "$_sb_hit" != 1 ]; then
+        rm -f "$_sb_tmp" 2>/dev/null
+        return 1
+    fi
+    mv -f "$_sb_tmp" "$DEF" 2>/dev/null || {
+        rm -f "$_sb_tmp" 2>/dev/null
+        return 1
+    }
+    [ "$(def_of "$_sb_f")" = "$_sb_v" ]
+}
+
+# 返回 0 = 采纳当前值并重试写入；1 = 仍在等待/不采纳。
+conflict_should_adopt() {   # path current
+    _csa_settle=$CONFLICT_SETTLE_SECS
+    case "$_csa_settle" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$_csa_settle" -gt 0 ] 2>/dev/null || return 1
+
+    _csa_now=$(date +%s 2>/dev/null) || return 1
+    case "$_csa_now" in ''|*[!0-9]*) return 1 ;; esac
+
+    _csa_rec=$(conflict_rec_read "$1")
+    if [ -z "$_csa_rec" ]; then
+        conflict_rec_write "$1" "$2" "$_csa_now" 0
+        return 1
+    fi
+    _csa_val=${_csa_rec%%|*}
+    _csa_rest=${_csa_rec#*|}
+    _csa_since=${_csa_rest%%|*}
+    _csa_cnt=${_csa_rest#*|}
+    case "$_csa_since" in ''|*[!0-9]*) _csa_since=$_csa_now ;; esac
+    case "$_csa_cnt" in ''|*[!0-9]*) _csa_cnt=0 ;; esac
+
+    if [ "$_csa_val" != "$2" ]; then
+        # 值又变了：重新计时，保留退避计数，避免厂商抖动时反复采纳。
+        conflict_rec_write "$1" "$2" "$_csa_now" "$_csa_cnt"
+        return 1
+    fi
+
+    _csa_need=$((_csa_settle * (_csa_cnt + 1)))
+    [ "$_csa_need" -le 86400 ] 2>/dev/null || _csa_need=86400
+    if [ $((_csa_now - _csa_since)) -ge "$_csa_need" ] 2>/dev/null; then
+        conflict_rec_write "$1" "$2" "$_csa_now" $((_csa_cnt + 1))
+        return 0
+    fi
+    return 1
+}
+
 set_val() {
     _sv_f=$1
     _sv_v=$2
@@ -664,26 +816,40 @@ set_val() {
     _sv_last=$(applied_of "$_sv_f")
     if [ -n "$_sv_last" ]; then
         if [ "$_sv_cur" != "$_sv_last" ]; then
+            # [本地补丁] 冲突持续且值已稳定：采纳当前值为归属基线后继续写入。
+            if conflict_should_adopt "$_sv_f" "$_sv_cur" && record_applied "$_sv_f" "$_sv_cur"; then
+                _sv_last=$_sv_cur
+                conflict_forget "$_sv_f"
+                log "[自愈] 外部占用已稳定 $_sv_f=$_sv_cur，采纳为新归属基线并重试写入"
+            else
+                case " $_sf_conflicted_paths " in
+                    *" $_sv_f "*) ;;
+                    *)
+                        _sf_conflicted_paths="$_sf_conflicted_paths $_sv_f "
+                        log "检测到外部节点占用，跳过写入 $_sv_f（当前=$_sv_cur，SmoothFlow 最后写入=$_sv_last）"
+                        ;;
+                esac
+                SF_WRITE_CONFLICT=1
+                return 0
+            fi
+        fi
+    elif [ "$_sv_cur" != "$_sv_def" ]; then
+        # [本地补丁] 基线已过期但值稳定：采纳当前值为新基线后继续写入。
+        if conflict_should_adopt "$_sv_f" "$_sv_cur" && set_baseline "$_sv_f" "$_sv_cur"; then
+            _sv_def=$_sv_cur
+            conflict_forget "$_sv_f"
+            log "[自愈] 基线采集后变化已稳定 $_sv_f=$_sv_cur，采纳为新基线并重试写入"
+        else
             case " $_sf_conflicted_paths " in
                 *" $_sv_f "*) ;;
                 *)
                     _sf_conflicted_paths="$_sf_conflicted_paths $_sv_f "
-                    log "检测到外部节点占用，跳过写入 $_sv_f（当前=$_sv_cur，SmoothFlow 最后写入=$_sv_last）"
+                    log "节点在基线采集后发生变化，跳过写入 $_sv_f（当前=$_sv_cur，基线=$_sv_def）"
                     ;;
             esac
             SF_WRITE_CONFLICT=1
             return 0
         fi
-    elif [ "$_sv_cur" != "$_sv_def" ]; then
-        case " $_sf_conflicted_paths " in
-            *" $_sv_f "*) ;;
-            *)
-                _sf_conflicted_paths="$_sf_conflicted_paths $_sv_f "
-                log "节点在基线采集后发生变化，跳过写入 $_sv_f（当前=$_sv_cur，基线=$_sv_def）"
-                ;;
-        esac
-        SF_WRITE_CONFLICT=1
-        return 0
     fi
 
     if printf '%s\n' "$_sv_v" > "$_sv_f" 2>/dev/null; then
@@ -776,26 +942,40 @@ set_pct() {
     _sp_last=$(applied_of "$_sp_path")
     if [ -n "$_sp_last" ]; then
         if [ "$_sp_cur" != "$_sp_last" ]; then
+            # [本地补丁] 冲突持续且值已稳定：采纳当前值为归属基线后继续写入。
+            if conflict_should_adopt "$_sp_path" "$_sp_cur" && record_applied "$_sp_path" "$_sp_cur"; then
+                _sp_last=$_sp_cur
+                conflict_forget "$_sp_path"
+                log "[自愈] 外部 uclamp 占用已稳定 $_sp_path=$_sp_cur，采纳为新归属基线并重试写入"
+            else
+                case " $_sf_conflicted_paths " in
+                    *" $_sp_path "*) ;;
+                    *)
+                        _sf_conflicted_paths="$_sf_conflicted_paths $_sp_path "
+                        log "检测到外部 uclamp 节点占用，跳过写入 $_sp_path（当前=$_sp_cur，SmoothFlow 最后写入=$_sp_last）"
+                        ;;
+                esac
+                SF_WRITE_CONFLICT=1
+                return 0
+            fi
+        fi
+    elif [ "$_sp_cur" != "$_sp_def" ]; then
+        # [本地补丁] 基线已过期但值稳定：采纳当前值为新基线后继续写入。
+        if conflict_should_adopt "$_sp_path" "$_sp_cur" && set_baseline "$_sp_path" "$_sp_cur"; then
+            _sp_def=$_sp_cur
+            conflict_forget "$_sp_path"
+            log "[自愈] uclamp 基线采集后变化已稳定 $_sp_path=$_sp_cur，采纳为新基线并重试写入"
+        else
             case " $_sf_conflicted_paths " in
                 *" $_sp_path "*) ;;
                 *)
                     _sf_conflicted_paths="$_sf_conflicted_paths $_sp_path "
-                    log "检测到外部 uclamp 节点占用，跳过写入 $_sp_path（当前=$_sp_cur，SmoothFlow 最后写入=$_sp_last）"
+                    log "uclamp 在基线采集后发生变化，跳过写入 $_sp_path（当前=$_sp_cur，基线=$_sp_def）"
                     ;;
             esac
             SF_WRITE_CONFLICT=1
             return 0
         fi
-    elif [ "$_sp_cur" != "$_sp_def" ]; then
-        case " $_sf_conflicted_paths " in
-            *" $_sp_path "*) ;;
-            *)
-                _sf_conflicted_paths="$_sf_conflicted_paths $_sp_path "
-                log "uclamp 在基线采集后发生变化，跳过写入 $_sp_path（当前=$_sp_cur，基线=$_sp_def）"
-                ;;
-        esac
-        SF_WRITE_CONFLICT=1
-        return 0
     fi
 
     if printf '%s.00\n' "$_sp_value" > "$_sp_path" 2>/dev/null; then
