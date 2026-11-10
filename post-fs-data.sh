@@ -8,6 +8,8 @@ case "$0" in */*) MODDIR=$(cd "${0%/*}" && pwd) ;; *) MODDIR=$(pwd) ;; esac
 : > "$LOG" 2>/dev/null
 : > "$DEF" 2>/dev/null
 : > "$APPLIED" 2>/dev/null
+# [本地补丁] 冲突自愈状态属于本启动周期，跨启动必须清空，避免沿用旧时间戳过早采纳。
+: > "$CONFLICTF" 2>/dev/null
 log "=== 开机 $(getprop ro.build.display.id 2>/dev/null) ==="
 
 # post-fs-data 阶段不采集参数：此时厂商服务可能还会调整调度节点。
