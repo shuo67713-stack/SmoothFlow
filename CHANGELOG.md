@@ -1,15 +1,13 @@
 # 更新记录
 
-## v5.0.5 — Bugfix Release
+## v5.0.6-rc1 — Candidate stabilization
 
-- M1：配置热更新后 max/min 改走归属记录恢复，修复 ECO/GAME 档位切换后省电上限与游戏最低频残留（含 ON_MIN 非零场景）。
-- M2：锁陈旧回收改为 `.reap` 门禁 + 原子改名协议，消除 TOCTOU 双持；service.sh 不再自行拆锁。
-- Major-1：新增 `.reap` 门禁启动恢复，带有效属主记录且确认死亡的遗留门禁在开机时隔离清理，修复个别 SIGKILL 时机下模块跨重启永久失效；空门禁仍保持 fail-closed。
-- M3：stop_daemon 增加 TERM → KILL → 复核与失败返回，action/service/uninstall 按返回值处理，身份不符不误杀。
-- daemon 改为 DAEMON_LOCK 终身持锁保证单实例；unlock 增加双重校验；supervisor 崩溃恢复改指数退避（10→300 秒），8 次快速失败后熔断冷却 15 分钟。
-- S1：游戏识别 cgroup 路径每 60 秒重探，支持晚挂载切换。
-- 隔离自测扩充至 89 项，并修复第 30/32 组在只读根目录/非 root 环境下夹具路径塌陷的问题（测试夹具问题，非产品代码）。
-- 默认调度参数、游戏识别策略与 10 秒守护节拍不变；不宣称真实设备 FPS、帧时间、温度或功耗提升。
+- 基线：SmoothFlow 5.0.4 Patch3 ReviewFix；不是 5.0.5 正式源码的替代品。
+- 修复 reap gate 回收直接删除公共路径的问题：改为唯一隔离路径原子改名，并校验目录 inode 后清理。
+- 发布打包增加 fail-closed 检查，任何 SF_* 测试环境覆盖残留都会阻断构建。
+- 增加活跃 reap gate 的 fail-closed 单元测试与双进程压力测试场景。
+- 保持既有 CPU 调度参数、游戏规则、守护节拍和 sysfs 写入范围不变；本候选版不宣称实机性能提升。
+- 与 5.0.5 的差异尚未核对：本候选版直接从 5.0.4 Patch3 ReviewFix 分支演进，不能视为包含 5.0.5 的全部变更。
 
 ## v5.0.4 — Open Source Preparation
 
@@ -46,11 +44,3 @@
 ## v5.0.0
 
 - 基于 4.2.0 的安全维护和诊断状态说明版本。
-
-
-### Patch 3（候选）
-- 增加启动阶段陈旧 `.reap` 门禁恢复；恢复前要求 daemon/supervisor 不在运行，并验证门禁属主身份。
-- 增加 daemon 独立实例锁，串行化单实例判定和 PID 发布。
-- profile 锁释放统一校验 PID 与启动时间。
-- supervisor 增加有上限的指数退避与连续快速失败冷却，避免固定 10 秒无限重启。
-- 不修改任何 CPU/WALT/uclamp 调度默认值。

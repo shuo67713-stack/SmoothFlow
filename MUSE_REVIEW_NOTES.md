@@ -65,12 +65,3 @@
 ## 发布边界
 
 本候选包没有在 OPD2513 真机执行命令、没有写真实 `/sys`、没有安装或卸载。83 项隔离测试与 40 轮主机双进程锁测试不等于 Android 真机验证。不要直接将此审查包作为正式安装版发布。
-
-
-## Patch 3 变更（启动恢复与生命周期专项）
-- service 在 boot_completed 且旧 daemon/supervisor 已确认停止后，才检查 profile/supervisor/daemon 的 `.reap` 门禁；仅对 PID+启动时间确认死亡的门禁执行隔离清理。活跃/身份不确定门禁保持 fail-closed。
-- daemon 增加独立目录锁，将单实例检查与 PID 文件发布放入同一锁区间，消除原 check-then-act 窄竞态。
-- `unlock_profile` 改为 PID+启动时间一致才释放。
-- supervisor 改为 10–300 秒指数退避；连续 8 次运行不足 60 秒触发 15 分钟冷却，冷却可响应停止标记；运行达到 60 秒后重置失败计数。
-- 上述恢复只在启动服务阶段执行，不在普通 action 路径清理门禁；仅在 gate PID 与启动时间均有效且可确认属主已死亡时清理。若 SIGKILL 发生在 gate 创建后、PID 文件发布前，属主无法证明，继续 fail-closed，不按目录年龄猜测删除。仍需 Android mksh/Toybox 和真实设备并发场景验证。
-- Patch 3 当前主机复测：Shell 语法检查通过；隔离自测 89 项通过；默认双进程锁竞争 40 轮通过。以上均非 Android 真机测试。

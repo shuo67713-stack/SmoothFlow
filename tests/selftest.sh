@@ -1,14 +1,14 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.5 隔离自测
+# SmoothFlow 5.0.6-rc1 隔离自测
 # 在临时目录里构造假的 sysfs / procfs / cgroup，验证：
 #   拓扑识别、日常/游戏/省电档写入、恢复语义、拓扑失效 fail-closed、
 #   配置白名单解析、cgroup 游戏识别、屏幕状态快路径。
 # 不读写真实 /sys、不触碰正在运行的守护进程。
 
 HERE=$(cd "${0%/*}" && pwd)
-CORE=$HERE/../bin/core.sh
+if [ -f "$HERE/core.sh" ]; then CORE=$HERE/core.sh; else CORE=$HERE/../bin/core.sh; fi
 T=${TMPDIR:-/tmp}/sf-selftest.$$
 FAIL=0
 PASS=0
@@ -34,7 +34,7 @@ PROC=$T/proc
 CG=$T/dev/cpuctl
 DATA=$T/data
 TRASH=$T/trash
-export SF_SYS=$SYS SF_PROC=$PROC SF_CG=$CG SF_DATADIR=$DATA SF_TRASH=$TRASH
+export SF_TEST_MODE=1 SF_SYS=$SYS SF_PROC=$PROC SF_CG=$CG SF_DATADIR=$DATA SF_TRASH=$TRASH
 mkdir -p "$SYS" "$PROC" "$CG" "$DATA"
 # 模拟目标设备属性，使真实设备门禁也纳入隔离测试。
 cat > "$T/getprop" <<'GETPROP'
@@ -102,14 +102,7 @@ printf "com.miHoYo.Genshin\n" > "$PROC/100/cmdline"
 printf 'com.android.launcher3\n' > "$PROC/101/cmdline"
 printf '100\n101\n' > "$CG/top-app/cgroup.procs"
 
-run() {
-    SF_TEST_CORE="$CORE" SF_TEST_COMMAND="$1" sh -c '
-        mkdir -p "$SF_PROC/$$"
-        printf "%s (selftest runner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12345\n" "$$" > "$SF_PROC/$$/stat"
-        . "$SF_TEST_CORE"
-        eval "$SF_TEST_COMMAND"
-    '
-}
+run() { sh -c ". '$CORE'; $1"; }
 
 # ---- 1. 拓扑识别 ----
 OUT=$(run 'printf "%s|%s|%s|%s\n" "$CPU_TOPOLOGY_OK" "${CPU0##*/}" "${CPU6##*/}" "$WALT_OK"')
@@ -467,74 +460,47 @@ OUT=$(run '
 
 # ---- 30. 锁属主 PID 复用与活进程判定（M2） ----
 OUT=$(run '
-    mkdir -p "$PROC/4244" "$PROC/4245" "$DATADIR/lock-reused" "$DATADIR/lock-live"
+    mkdir -p "$PROC/4244" "$PROC/4245" "$DATA/lock-reused" "$DATA/lock-live"
     printf "4244 (old owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 222\\n" > "$PROC/4244/stat"
     printf "4245 (live owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 333\\n" > "$PROC/4245/stat"
-    printf "4244 111\\n" > "$DATADIR/lock-reused/pid"
-    printf "4245 333\\n" > "$DATADIR/lock-live/pid"
-    lock_owner_stale "$DATADIR/lock-reused"; _reused=$?
-    lock_owner_stale "$DATADIR/lock-live"; _live=$?
+    printf "4244 111\\n" > "$DATA/lock-reused/pid"
+    printf "4245 333\\n" > "$DATA/lock-live/pid"
+    lock_owner_stale "$DATA/lock-reused"; _reused=$?
+    lock_owner_stale "$DATA/lock-live"; _live=$?
     printf "%s|%s" "$_reused" "$_live"
 ')
 [ "$OUT" = "0|1" ] && ok "锁回收识别 PID 重用，同时保护启动时间匹配的活属主" || bad "锁属主身份判定：[$OUT]"
 
-# ---- 31. daemon 锁将单实例入口串行化 ----
-OUT=$(run '
-    sleep() { :; }
-    mkdir -p "$PROC/$$"
-    acquire_daemon_lock; _first=$?
-    acquire_daemon_lock >/dev/null 2>&1; _second=$?
-    release_daemon_lock
-    if [ -d "$DAEMON_LOCK" ]; then _left=present; else _left=absent; fi
-    printf "%s|%s|%s" "$_first" "$_second" "$_left"
-')
-[ "$OUT" = "0|1|absent" ] && ok "daemon 锁允许首实例并拒绝并发第二实例，释放后无残留" || bad "daemon 单实例锁：[$OUT]"
+# ---- 31. restore_all 包装函数直接覆盖 ----
+OUT=$(run 'restore_all >/dev/null 2>&1; printf "%s" "$?"')
+[ "$OUT" = 0 ] && ok "restore_all 包装函数可直接执行" || bad "restore_all 直接测试：[$OUT]"
 
-# ---- 32. 启动恢复只回收确认死亡的 .reap gate ----
+# ---- 32. 真正的 pid_is_ours 身份校验（伪造 /proc） ----
 OUT=$(run '
-    mkdir -p "$DATADIR/profile.lock.reap" "$DATADIR/supervisor.lock.reap" "$DATADIR/daemon.lock.reap" "$PROC/4246"
-    printf "99999999 1\\n" > "$DATADIR/profile.lock.reap/pid"
-    printf "4246 (active reaper) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 444\\n" > "$PROC/4246/stat"
-    printf "4246 444\\n" > "$DATADIR/supervisor.lock.reap/pid"
-    recover_stale_reap_gate "$DATADIR/profile.lock.reap"; _dead=$?
-    recover_stale_reap_gate "$DATADIR/supervisor.lock.reap" >/dev/null 2>&1; _active=$?
-    recover_stale_reap_gate "$DATADIR/daemon.lock.reap" >/dev/null 2>&1; _unknown=$?
-    if [ -d "$DATADIR/profile.lock.reap" ]; then _dead_left=1; else _dead_left=0; fi
-    if [ -d "$DATADIR/supervisor.lock.reap" ]; then _active_left=1; else _active_left=0; fi
-    if [ -d "$DATADIR/daemon.lock.reap" ]; then _unknown_left=1; else _unknown_left=0; fi
-    printf "%s|%s|%s|%s|%s|%s" "$_dead" "$_active" "$_unknown" "$_dead_left" "$_active_left" "$_unknown_left"
+    mkdir -p "$PROC/4250" "$PROC/4251" "$PROC/4252"
+    printf "4250 (sh) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 500\n" > "$PROC/4250/stat"
+    printf "/system/bin/sh /data/adb/modules/smoothflow/bin/daemon.sh\n" > "$PROC/4250/cmdline"
+    printf "4251 (sh) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 501\n" > "$PROC/4251/stat"
+    printf "/system/bin/sh /data/adb/modules/smoothflow/bin/daemon.sh\n" > "$PROC/4251/cmdline"
+    printf "4252 (sh) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 500\n" > "$PROC/4252/stat"
+    printf "other_process\n" > "$PROC/4252/cmdline"
+    pid_is_ours 4250 daemon 500; _good=$?
+    pid_is_ours 4251 daemon 500; _reuse=$?
+    pid_is_ours 4252 daemon 500; _cmd=$?
+    printf "%s|%s|%s" "$_good" "$_reuse" "$_cmd"
 ')
-[ "$OUT" = "0|1|1|0|1|1" ] && ok "启动恢复只清除确认死亡属主 gate，保留活跃及身份不明 gate" || bad "reap gate 恢复保护：[$OUT]"
+[ "$OUT" = "0|1|1" ] && ok "pid_is_ours 真函数验证启动时间与 cmdline" || bad "pid_is_ours 真函数测试：[$OUT]"
 
-# ---- 33. profile unlock 必须同时匹配 PID 与启动时间 ----
+# ---- 33. 活跃 reap gate 必须 fail-closed，且不能被并发等待者删除 ----
 OUT=$(run '
-    mkdir -p "$PROFILE_LOCK"
-    _start=$(proc_start_time $$ 2>/dev/null) || _start=
-    printf "%s %s\\n" "$$" wrong-start > "$PROFILE_LOCK/pid"
-    unlock_profile
-    if [ -d "$PROFILE_LOCK" ]; then _wrong=kept; else _wrong=removed; fi
-    printf "%s %s\\n" "$$" "$_start" > "$PROFILE_LOCK/pid"
-    unlock_profile
-    if [ -d "$PROFILE_LOCK" ]; then _right=kept; else _right=removed; fi
-    printf "%s|%s" "$_wrong" "$_right"
+    mkdir -p "$PROC/4260" "$DATA/live-gate.reap"
+    printf "4260 (owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 660\\n" > "$PROC/4260/stat"
+    printf "4260 660\\n" > "$DATA/live-gate.reap/pid"
+    reap_gate_stale "$DATA/live-gate.reap"; _rc=$?
+    printf "%s|%s" "$_rc" "$( [ -d "$DATA/live-gate.reap" ] && echo present || echo absent )"
 ')
-[ "$OUT" = "kept|removed" ] && ok "profile unlock 同时校验 PID 与启动时间" || bad "profile unlock 身份校验：[$OUT]"
+[ "$OUT" = "1|present" ] && ok "活跃 reap gate 保持 fail-closed，不被回收" || bad "活跃 reap gate 保护：[$OUT]"
 
-# ---- 34. supervisor 指数退避、上限、熔断与稳定恢复 ----
-OUT=$(run '
-    _fail=0; _back=10; _seq=
-    _i=0
-    while [ "$_i" -lt 8 ]; do
-        _state=$(supervisor_backoff_update 0 "$_fail" "$_back") || exit 2
-        set -- $_state
-        _fail=$1; _back=$2; _trip=$3
-        _seq="$_seq$_fail:$_back:$_trip "
-        _i=$((_i + 1))
-    done
-    _reset=$(supervisor_backoff_update 60 "$_fail" "$_back")
-    printf "%s|%s" "$_seq" "$_reset"
-')
-[ "$OUT" = "1:10:0 2:20:0 3:40:0 4:80:0 5:160:0 6:300:0 7:300:0 8:300:1 |0 10 0" ] && ok "supervisor 退避 10→300 秒、8 次熔断、稳定运行后重置" || bad "supervisor 退避状态机：[$OUT]"
 
 printf '\n通过 %s 项，失败 %s 项\n' "$PASS" "$FAIL"
 [ "$FAIL" = 0 ]

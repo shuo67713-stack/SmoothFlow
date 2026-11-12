@@ -1,4 +1,4 @@
-# SmoothFlow 5.0.5 可选配置
+# SmoothFlow 5.0.6-rc1 可选配置
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
 # 复制到 /data/adb/smoothflow/config.sh 后，执行 action.sh stop 再 start（或重启）生效。

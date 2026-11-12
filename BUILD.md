@@ -32,9 +32,10 @@ sh scripts/package.sh /path/to/output
 6. 计算 SHA-256，并在 GitHub Release 和酷安帖子中同时提供。
 7. 完成目标设备安装、升级、重启、模式切换、恢复和卸载实测后，再将“实机验证”状态改为通过。
 
-## GitHub Release 建议
+## 5.0.6-rc1 候选版发布建议
 
-- Tag：`v5.0.5`
-- Release title：`SmoothFlow v5.0.5 — Bugfix Release`
-- 上传 `SmoothFlow_5.0.5_OPD2513.zip` 和对应 `.sha256` 文件。
-- Release notes 使用 `CHANGELOG.md` 中的 v5.0.5 条目，并明确当前没有实机性能基准。
+- Tag：`v5.0.6-rc1`（候选版，不是正式版）
+- Release title：`SmoothFlow v5.0.6-rc1 — Candidate`
+- 上传 `SmoothFlow_5.0.6-rc1_OPD2513.zip` 和对应 `.sha256` 文件。
+- 同时附上 `VERSION_5.0.6-rc1_BASELINE.md`，明确本候选版从 5.0.4 Patch3 ReviewFix 演进，尚未核对 5.0.5 正式源码差异。
+- 未完成 OPD2513 真机安装、启停、模式切换、恢复和卸载回归前，不得标记为正式发布或宣称性能提升。
