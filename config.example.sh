@@ -1,4 +1,4 @@
-# SmoothFlow 5.0.6-rc1 可选配置
+# SmoothFlow 5.0.6-rc7 可选配置
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
 # 复制到 /data/adb/smoothflow/config.sh 后，执行 action.sh stop 再 start（或重启）生效。
@@ -23,15 +23,17 @@
 # ON_MAX0=0             # 0 = 不限制上限
 
 # ---- 游戏档 ----
+# 游戏档参数沿用 rc2 的 CPU 响应性试验值：hispeed_load 78（更早触发）；down_rate 10000us（稍缓降频）
+# 频率目标、最低/最高频率限制保持不变；仍需通过真机 A/B 验证温度、功耗与帧时间。
 # GAME_HS0=1804800
-# GAME_LOAD0=80
+# GAME_LOAD0=78
 # GAME_RTG0=1555200
 # GAME_MIN0=0
 # GAME_HS6=2496000
-# GAME_LOAD6=80
+# GAME_LOAD6=78
 # GAME_RTG6=1996800
 # GAME_MIN6=0
-# GAME_DOWN_RATE=8000
+# GAME_DOWN_RATE=10000
 # GAME_UP_RATE=0
 # GAME_UCLAMP=20        # 游戏时 top-app 组 uclamp.min（%）
 # DISPLAY_UCLAMP=10     # SurfaceFlinger 所在 display 组 uclamp.min（%）

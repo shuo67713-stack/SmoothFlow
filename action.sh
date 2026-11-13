@@ -1,9 +1,27 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.6-rc1 操作面板 / 状态可视化
+# SmoothFlow 5.0.6-rc7 操作面板 / 状态可视化
 case "$0" in */*) MODDIR=$(cd "${0%/*}" && pwd) ;; *) MODDIR=$(pwd) ;; esac
 . "$MODDIR/bin/core.sh"
+
+# 手动控制（适配 KernelSU Next 临时注入 Root：不依赖开机脚本，Root 在场
+# 时手动启停并同步完成恢复）：sh action.sh start|stop|reinit
+# 无参数时显示状态面板（管理器 Action 按钮的默认行为）。
+case "${1:-}" in
+    start)
+        sf_start; _ac_rc=$?
+        [ "$_ac_rc" = 0 ] && echo "SmoothFlow 已启动" || echo "SmoothFlow 启动失败（见模块日志）"
+        exit "$_ac_rc" ;;
+    stop)
+        sf_stop; _ac_rc=$?
+        [ "$_ac_rc" = 0 ] && echo "SmoothFlow 已停止，调度参数已恢复" || echo "SmoothFlow 停止未完成（见模块日志）"
+        exit "$_ac_rc" ;;
+    reinit)
+        sf_reinit; _ac_rc=$?
+        [ "$_ac_rc" = 0 ] && echo "SmoothFlow 已重新初始化并启动" || echo "SmoothFlow 重新初始化失败（见模块日志）"
+        exit "$_ac_rc" ;;
+esac
 
 # ---------------- 小工具 ----------------
 bar() {
@@ -112,7 +130,7 @@ draw_status() {
 
     printf '\n'
     printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
-    printf ' SmoothFlow 5.0.6-rc1 低开销调度引擎 · %s\n' "$ver"
+    printf ' SmoothFlow 5.0.6-rc7 低开销调度引擎 · %s\n' "$ver"
     printf ' 设备 OPD2513 · CPU policy 动态识别\n'
     printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
     printf ' 系统  %s · %s\n' "$(getprop ro.build.version.release)" "$(getprop ro.build.display.id)"
@@ -275,7 +293,7 @@ case "$1" in
         printf 'swap_used=%s\nswap_total=%s\n' "$(swap_field 4)" "$(swap_field 3)"
         ;;
     debug)
-        printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n SmoothFlow 5.0.6-rc1 调试信息\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
+        printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n SmoothFlow 5.0.6-rc7 调试信息\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
         printf ' 时间: %s   uptime: %s秒\n' "$(date '+%F %T')" "$(cut -d' ' -f1 "$PROC/uptime")"
         printf ' 内核: %s\n' "$(uname -r)"
         printf ' 模块: %s\n' "$(ver_of)"
@@ -339,7 +357,7 @@ case "$1" in
         fi
         ;;
     frame)
-        printf 'SmoothFlow 5.0.6-rc1 帧时间反馈状态\n'
+        printf 'SmoothFlow 5.0.6-rc7 帧时间反馈状态\n'
         printf '状态：未启用\n'
         printf '原因：当前尚未在 OPD2513 上验证稳定、低开销且可归因到目标游戏的帧时间数据源。\n'
         printf '当前策略：继续使用已验证的 WALT / uclamp 调度路径。\n'

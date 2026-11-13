@@ -19,7 +19,7 @@ copy_file() {
 
 # 显式文件清单：不递归复制目录，避免草稿/备份/临时文件进入发布包。
 for item in module.prop post-fs-data.sh service.sh action.sh uninstall.sh \
-            config.example.sh README.md CHANGELOG.md LICENSE NOTICE.md PATCH3_SECURITY_FIXES.md \
+            config.example.sh README.md CHANGELOG.md LICENSE NOTICE.md PATCH3_SECURITY_FIXES.md RELEASE_NOTES_v5.0.6-rc7.md VERSION_5.0.6-rc7_BASELINE.md BUILD_REPORT_5.0.6-rc7.md \
             bin/core.sh bin/daemon.sh bin/supervisor.sh \
             tests/selftest.sh tests/lock_stress.sh webroot/index.html; do
     copy_file "$item"
@@ -49,7 +49,7 @@ chmod 755 "$TMP/post-fs-data.sh" "$TMP/service.sh" "$TMP/action.sh" "$TMP/uninst
           "$TMP/bin/core.sh" "$TMP/bin/daemon.sh" "$TMP/bin/supervisor.sh" "$TMP/tests/selftest.sh" "$TMP/tests/lock_stress.sh"
 chmod 644 "$TMP/config.example.sh"
 
-ZIP="$OUT/SmoothFlow_5.0.6-rc1_OPD2513.zip"
+ZIP="$OUT/SmoothFlow_5.0.6-rc7_OPD2513.zip"
 rm -f "$ZIP" "$ZIP.sha256"
 (
     cd "$TMP"

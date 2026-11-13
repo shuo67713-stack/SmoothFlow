@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.6-rc1 核心库
+# SmoothFlow 5.0.6-rc7 核心库
 # 只写 sysfs / procfs 下的运行时参数，不挂载、不修改任何分区。
 # 所有改动在重启后失效；uninstall.sh 会把仍由本模块持有的参数还原为首次写入前采集的基线值。
 #
@@ -35,6 +35,8 @@ APPLIED=$DATADIR/applied.txt
 PIDF=$DATADIR/daemon.pid
 SUPIDF=$DATADIR/supervisor.pid
 SUPLOCK=$DATADIR/supervisor.lock
+DAEMON_LOCK=$DATADIR/daemon.lock
+SESSION_LOCK=$DATADIR/session.lock
 STOPF=$DATADIR/stopped
 
 CPUFREQ_ROOT=$SYS/devices/system/cpu/cpufreq
@@ -250,14 +252,14 @@ unset ON_HS_POLICY ON_HS0 ON_LOAD0 ON_RTG0 ON_MIN0 ON_HS6 ON_LOAD6 ON_RTG6 ON_MI
 
 # 游戏档：更快响应负载，不锁最高频、不抬最低频、不强制在线核心数
 : "${GAME_HS0:=1804800}"
-: "${GAME_LOAD0:=80}"
+: "${GAME_LOAD0:=78}"
 : "${GAME_RTG0:=1555200}"
 : "${GAME_MIN0:=0}"
 : "${GAME_HS6:=2496000}"
-: "${GAME_LOAD6:=80}"
+: "${GAME_LOAD6:=78}"
 : "${GAME_RTG6:=1996800}"
 : "${GAME_MIN6:=0}"
-: "${GAME_DOWN_RATE:=8000}"
+: "${GAME_DOWN_RATE:=10000}"
 : "${GAME_UP_RATE:=0}"
 
 # 省电档：仅限制 CPU 最高频率；GPU 和系统温控交给厂商
@@ -1248,10 +1250,12 @@ lock_owner_stale() {
     esac
     [ "$_los_pid" -gt 0 ] 2>/dev/null || return 1
     [ -d "$PROC/$_los_pid" ] || return 0
-    # 活 PID 但启动时间不可读/记录为空时，不冒险回收。
-    [ -n "$_los_start" ] || return 1
+    # /proc 项存在但状态为僵尸/已退出时，死亡证明优先于 starttime 记录格式。
     _los_state=$(proc_state "$_los_pid" 2>/dev/null) || _los_state=
     case "$_los_state" in Z|X) return 0 ;; esac
+    # 其余活 PID：启动时间不可读/记录为空/非数字（记录损坏）时不冒险回收。
+    [ -n "$_los_start" ] || return 1
+    case "$_los_start" in *[!0-9]*) return 1 ;; esac
     _los_live=$(proc_start_time "$_los_pid" 2>/dev/null) || _los_live=
     [ -n "$_los_live" ] || return 1
     [ "$_los_live" != "$_los_start" ]
@@ -1282,7 +1286,14 @@ reap_gate_stale() {
     if [ "$_rgs_moved_inode" != "$_rgs_inode" ] || [ "$_rgs_moved_owner" != "$_rgs_owner" ]; then
         # 异常替换：尽可能恢复原路径；绝不删除身份不明的目录。
         if [ ! -e "$_rgs_gate" ]; then
-            mv "$_rgs_quarantine" "$_rgs_gate" 2>/dev/null || :
+            if mv "$_rgs_quarantine" "$_rgs_gate" 2>/dev/null; then
+                _rgs_restored_inode=$(stat -c '%d:%i' "$_rgs_gate" 2>/dev/null) || _rgs_restored_inode=
+                [ "$_rgs_restored_inode" = "$_rgs_moved_inode" ] || log "回收门禁隔离副本还原后 inode 复验失败，隔离路径保留/状态不确定：$_rgs_quarantine"
+            else
+                log "回收门禁隔离副本还原失败：$_rgs_quarantine"
+            fi
+        else
+            log "原回收门禁路径已重建，跳过隔离副本还原：$_rgs_quarantine"
         fi
         return 1
     fi
@@ -1295,6 +1306,8 @@ reap_lock_dir() {
     _rld_gate="$_rld_dir.reap"
     mkdir "$_rld_gate" 2>/dev/null || return 1
     _rld_start=$(proc_start_time $$ 2>/dev/null) || _rld_start=
+    # 启动时间读不到时不发布残缺记录（"$$ " 会让后续身份判定面对空 starttime）。
+    [ -n "$_rld_start" ] || { rmdir "$_rld_gate" 2>/dev/null; return 1; }
     _rld_tmp="$_rld_gate/pid.tmp.$$"
     if ! printf '%s %s\n' "$$" "$_rld_start" > "$_rld_tmp" 2>/dev/null || ! mv -f "$_rld_tmp" "$_rld_gate/pid" 2>/dev/null; then
         rm -f "$_rld_tmp" 2>/dev/null
@@ -1328,6 +1341,11 @@ lock_profile() {
                 continue
             fi
             _lp_self_start=$(proc_start_time $$ 2>/dev/null) || _lp_self_start=
+            [ -n "$_lp_self_start" ] || {
+                rmdir "$PROFILE_LOCK" 2>/dev/null
+                log "无法读取参数锁属主启动时间，拒绝本轮写入"
+                return 1
+            }
             _lp_tmp="$PROFILE_LOCK/pid.tmp.$$"
             if ! printf '%s %s\n' "$$" "$_lp_self_start" > "$_lp_tmp" 2>/dev/null || ! mv -f "$_lp_tmp" "$PROFILE_LOCK/pid" 2>/dev/null; then
                 rm -f "$_lp_tmp" "$PROFILE_LOCK/pid" 2>/dev/null
@@ -1354,7 +1372,8 @@ lock_profile() {
 
 unlock_profile() {
     _up_line=$(read_node "$PROFILE_LOCK/pid" 2>/dev/null) || _up_line=
-    if [ "${_up_line%% *}" = "$$" ]; then
+    _up_start=$(proc_start_time $$ 2>/dev/null) || _up_start=
+    if [ -n "$_up_start" ] && [ "$_up_line" = "$$ $_up_start" ]; then
         rm -f "$PROFILE_LOCK/pid" 2>/dev/null
         rmdir "$PROFILE_LOCK" 2>/dev/null
     fi
@@ -1401,6 +1420,240 @@ supervisor_alive() {
     pid_is_ours "$_sa_p" supervisor "$_sa_start"
 }
 
+# daemon 独立原子锁：将“检查实例→发布 PID”纳入同一 mkdir 锁区间。
+acquire_daemon_lock() {
+    _adl_tries=0
+    while [ "$_adl_tries" -lt 20 ]; do
+        if [ -d "$DAEMON_LOCK.reap" ]; then
+            reap_gate_stale "$DAEMON_LOCK.reap" || { sleep 0.2; _adl_tries=$((_adl_tries + 1)); continue; }
+        fi
+        if mkdir "$DAEMON_LOCK" 2>/dev/null; then
+            if [ -d "$DAEMON_LOCK.reap" ]; then
+                rmdir "$DAEMON_LOCK" 2>/dev/null
+                sleep 0.2
+                _adl_tries=$((_adl_tries + 1))
+                continue
+            fi
+            _adl_start=$(proc_start_time $$ 2>/dev/null) || _adl_start=
+            [ -n "$_adl_start" ] || {
+                rmdir "$DAEMON_LOCK" 2>/dev/null
+                log "无法读取 daemon 锁属主启动时间，拒绝启动"
+                return 1
+            }
+            _adl_tmp="$DAEMON_LOCK/pid.tmp.$$"
+            if ! printf '%s %s\n' "$$" "$_adl_start" > "$_adl_tmp" 2>/dev/null || ! mv -f "$_adl_tmp" "$DAEMON_LOCK/pid" 2>/dev/null; then
+                rm -f "$_adl_tmp" 2>/dev/null
+                rmdir "$DAEMON_LOCK" 2>/dev/null
+                log "daemon 锁记录失败，拒绝启动"
+                return 1
+            fi
+            _adl_saved=$(read_node "$DAEMON_LOCK/pid" 2>/dev/null) || _adl_saved=
+            [ "$_adl_saved" = "$$ $_adl_start" ] || {
+                rm -f "$DAEMON_LOCK/pid" 2>/dev/null
+                rmdir "$DAEMON_LOCK" 2>/dev/null
+                log "daemon 锁归属校验失败，拒绝启动"
+                return 1
+            }
+            return 0
+        fi
+        [ -d "$DAEMON_LOCK.reap" ] || reap_lock_dir "$DAEMON_LOCK" || :
+        sleep 0.2
+        _adl_tries=$((_adl_tries + 1))
+    done
+    log "daemon 锁被占用或回收门禁异常，拒绝重复启动"
+    return 1
+}
+release_daemon_lock() {
+    _rdl_line=$(read_node "$DAEMON_LOCK/pid" 2>/dev/null) || _rdl_line=
+    _rdl_start=$(proc_start_time $$ 2>/dev/null) || _rdl_start=${_adl_start:-}
+    if [ "$_rdl_line" = "$$ $_rdl_start" ]; then
+        rm -f "$DAEMON_LOCK/pid" 2>/dev/null
+        rmdir "$DAEMON_LOCK" 2>/dev/null
+    fi
+}
+
+# Supervisor 退避状态机：运行满 60 秒视为稳定；短命崩溃指数退避，8 次熔断。
+supervisor_backoff_update() {
+    _sbu_runtime=$1; _sbu_failures=$2; _sbu_backoff=$3
+    case "$_sbu_runtime" in ''|*[!0-9]*) return 1 ;; esac
+    case "$_sbu_failures" in ''|*[!0-9]*) return 1 ;; esac
+    case "$_sbu_backoff" in ''|*[!0-9]*) return 1 ;; esac
+    if [ "$_sbu_runtime" -ge 60 ]; then
+        _sbu_failures=0
+        _sbu_backoff=10
+    else
+        _sbu_failures=$((_sbu_failures + 1))
+        if [ "$_sbu_failures" -gt 1 ] && [ "$_sbu_backoff" -lt 300 ]; then
+            _sbu_backoff=$((_sbu_backoff * 2))
+            [ "$_sbu_backoff" -le 300 ] || _sbu_backoff=300
+        fi
+    fi
+    _sbu_trip=0
+    [ "$_sbu_failures" -ge 8 ] && _sbu_trip=1
+    printf '%s %s %s\n' "$_sbu_failures" "$_sbu_backoff" "$_sbu_trip"
+}
+
+# 启动阶段专用：只恢复能以 PID+starttime 确认属主已死亡的遗留 .reap。
+# 缺失/损坏属主记录、活 PID、无法读取启动时间均 fail-closed。
+reap_gate_owner_stale() {
+    _rgos_dir=$1
+    _rgos_line=$(read_node "$_rgos_dir/pid" 2>/dev/null) || return 1
+    _rgos_pid=${_rgos_line%% *}
+    _rgos_start=${_rgos_line#* }
+    case "$_rgos_pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$_rgos_pid" -gt 0 ] 2>/dev/null || return 1
+    [ -n "$_rgos_start" ] && [ "$_rgos_start" != "$_rgos_line" ] || return 1
+    [ -d "$PROC/$_rgos_pid" ] || return 0
+    _rgos_state=$(proc_state "$_rgos_pid" 2>/dev/null) || _rgos_state=
+    case "$_rgos_state" in Z|X) return 0 ;; esac
+    # PID 存活才需要比对 starttime：非数字即记录损坏，无法比对，一律不判
+    # 陈旧（与本函数头注的 fail-closed 承诺一致），不得以字符串不等冒充
+    # 死亡证明。PID 已不存在/僵尸时死亡由缺席本身证明，与 starttime 无关。
+    case "$_rgos_start" in *[!0-9]*) return 1 ;; esac
+    _rgos_live=$(proc_start_time "$_rgos_pid" 2>/dev/null) || return 1
+    [ -n "$_rgos_live" ] || return 1
+    [ "$_rgos_live" != "$_rgos_start" ]
+}
+gate_has_owner_record() {
+    _ghor_line=$(read_node "$1/pid" 2>/dev/null) || return 1
+    _ghor_pid=${_ghor_line%% *}
+    _ghor_start=${_ghor_line#* }
+    case "$_ghor_pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$_ghor_pid" -gt 0 ] 2>/dev/null || return 1
+    [ -n "$_ghor_start" ] && [ "$_ghor_start" != "$_ghor_line" ]
+}
+
+# 无属主记录 gate 的时限恢复协议：仅处理 pid 记录缺失/为空/不可解析的 gate
+# （持锁者或回收者在 mkdir 后、发布 pid 记录前被杀的残留）。有命名属主的
+# gate 一律不归本协议处理。安全边界：年龄须超过 30 秒（与 lock_owner_stale
+# 的无记录规则一致）；两次观察之间 inode、mtime、记录内容必须完全不变；
+# 删除只针对原子改名后的本进程隔离副本，绝不直接删除公共 gate 路径。
+recover_unproven_reap_gate() {
+    _rug_gate=$1
+    [ -d "$_rug_gate" ] || return 0
+    gate_has_owner_record "$_rug_gate" && return 1
+    _rug_inode=$(stat -c '%d:%i' "$_rug_gate" 2>/dev/null) || return 1
+    [ -n "$_rug_inode" ] || return 1
+    _rug_mtime=$(stat -c %Y "$_rug_gate" 2>/dev/null) || return 1
+    _rug_now=$(date +%s 2>/dev/null) || return 1
+    case "$_rug_mtime:$_rug_now" in *[!0-9:]*|:*) return 1 ;; esac
+    [ "$_rug_mtime" -gt 0 ] 2>/dev/null || return 1
+    [ $((_rug_now - _rug_mtime)) -gt 30 ] 2>/dev/null || return 1
+    _rug_line=$(read_node "$_rug_gate/pid" 2>/dev/null) || _rug_line=
+    sleep 1
+    [ -d "$_rug_gate" ] || return 1
+    [ "$(stat -c '%d:%i' "$_rug_gate" 2>/dev/null)" = "$_rug_inode" ] || return 1
+    [ "$(stat -c %Y "$_rug_gate" 2>/dev/null)" = "$_rug_mtime" ] || return 1
+    _rug_line_now=$(read_node "$_rug_gate/pid" 2>/dev/null) || _rug_line_now=
+    [ "$_rug_line_now" = "$_rug_line" ] || return 1
+    gate_has_owner_record "$_rug_gate" && return 1
+    _rug_start=$(proc_start_time $$ 2>/dev/null) || _rug_start=unknown
+    _rug_quarantine="$_rug_gate.stale.$$.$_rug_start"
+    [ ! -e "$_rug_quarantine" ] || return 1
+    mv "$_rug_gate" "$_rug_quarantine" 2>/dev/null || return 1
+    _rug_quarantine_inode=$(stat -c '%d:%i' "$_rug_quarantine" 2>/dev/null) || _rug_quarantine_inode=
+    if [ "$_rug_quarantine_inode" != "$_rug_inode" ]; then
+        if [ ! -e "$_rug_gate" ]; then
+            if mv "$_rug_quarantine" "$_rug_gate" 2>/dev/null; then
+                _rug_restored_inode=$(stat -c '%d:%i' "$_rug_gate" 2>/dev/null) || _rug_restored_inode=
+                [ "$_rug_restored_inode" = "$_rug_quarantine_inode" ] || log "无属主回收门禁隔离副本还原后 inode 复验失败：$_rug_quarantine"
+            else
+                log "无属主回收门禁隔离副本还原失败：$_rug_quarantine"
+            fi
+        else
+            log "原回收门禁路径已重建，跳过无属主隔离副本还原：$_rug_quarantine"
+        fi
+        return 1
+    fi
+    # 与严格证明路径对齐：改名后再读隔离副本的属主记录。末次观察到改名之间
+    # 若迟到的属主刚发布记录（内容变化，或出现可解析的属主记录），一律
+    # 还原不删——双重观察只能证明观察期内无变化，不能证明改名瞬间无变化。
+    _rug_moved_line=$(read_node "$_rug_quarantine/pid" 2>/dev/null) || _rug_moved_line=
+    if [ "$_rug_moved_line" != "$_rug_line" ] || gate_has_owner_record "$_rug_quarantine"; then
+        if [ ! -e "$_rug_gate" ]; then
+            if mv "$_rug_quarantine" "$_rug_gate" 2>/dev/null; then
+                _rug_restored_inode=$(stat -c '%d:%i' "$_rug_gate" 2>/dev/null) || _rug_restored_inode=
+                [ "$_rug_restored_inode" = "$_rug_quarantine_inode" ] || log "无属主回收门禁隔离副本还原后 inode 复验失败：$_rug_quarantine"
+            else
+                log "无属主回收门禁隔离副本还原失败：$_rug_quarantine"
+            fi
+        else
+            log "原回收门禁路径已重建，跳过无属主隔离副本还原：$_rug_quarantine"
+        fi
+        return 1
+    fi
+    rm -rf "$_rug_quarantine" 2>/dev/null || return 1
+    [ ! -e "$_rug_quarantine" ] || return 1
+    log "已按无属主记录时限协议恢复遗留回收门禁：$_rug_gate"
+    return 0
+}
+
+recover_stale_reap_gate() {
+    _rsrg_gate=$1
+    [ -d "$_rsrg_gate" ] || return 0
+    if ! reap_gate_owner_stale "$_rsrg_gate"; then
+        # 严格证明失败：有命名属主的 gate 一律保留（fail-closed）；
+        # 仅无属主记录的残留 gate 允许走时限协议恢复。
+        if gate_has_owner_record "$_rsrg_gate"; then
+            log "保留非陈旧或身份不确定的回收门禁：$_rsrg_gate"
+            return 1
+        fi
+        recover_unproven_reap_gate "$_rsrg_gate" && return 0
+        log "保留非陈旧或身份不确定的回收门禁：$_rsrg_gate"
+        return 1
+    fi
+    # 判定后再次复核，随后原子隔离；绝不直接删除公共 gate 路径。
+    _rsrg_inode=$(stat -c '%d:%i' "$_rsrg_gate" 2>/dev/null) || return 1
+    _rsrg_owner=$(read_node "$_rsrg_gate/pid" 2>/dev/null) || return 1
+    reap_gate_owner_stale "$_rsrg_gate" || return 1
+    [ "$(stat -c '%d:%i' "$_rsrg_gate" 2>/dev/null)" = "$_rsrg_inode" ] || return 1
+    [ "$(read_node "$_rsrg_gate/pid" 2>/dev/null)" = "$_rsrg_owner" ] || return 1
+    _rsrg_start=$(proc_start_time $$ 2>/dev/null) || _rsrg_start=unknown
+    _rsrg_quarantine="$_rsrg_gate.stale.$$.$_rsrg_start"
+    [ ! -e "$_rsrg_quarantine" ] || return 1
+    mv "$_rsrg_gate" "$_rsrg_quarantine" 2>/dev/null || return 1
+    _rsrg_moved_inode=$(stat -c '%d:%i' "$_rsrg_quarantine" 2>/dev/null) || _rsrg_moved_inode=
+    if [ "$_rsrg_moved_inode" != "$_rsrg_inode" ]; then
+        if [ ! -e "$_rsrg_gate" ]; then
+            if mv "$_rsrg_quarantine" "$_rsrg_gate" 2>/dev/null; then
+                _rsrg_restored_inode=$(stat -c '%d:%i' "$_rsrg_gate" 2>/dev/null) || _rsrg_restored_inode=
+                [ "$_rsrg_restored_inode" = "$_rsrg_moved_inode" ] || log "严格回收门禁隔离副本还原后 inode 复验失败：$_rsrg_quarantine"
+            else
+                log "严格回收门禁隔离副本还原失败：$_rsrg_quarantine"
+            fi
+        else
+            log "原回收门禁路径已重建，跳过严格隔离副本还原：$_rsrg_quarantine"
+        fi
+        return 1
+    fi
+    if [ "$(read_node "$_rsrg_quarantine/pid" 2>/dev/null)" != "$_rsrg_owner" ]; then
+        if [ ! -e "$_rsrg_gate" ]; then
+            if mv "$_rsrg_quarantine" "$_rsrg_gate" 2>/dev/null; then
+                _rsrg_restored_inode=$(stat -c '%d:%i' "$_rsrg_gate" 2>/dev/null) || _rsrg_restored_inode=
+                [ "$_rsrg_restored_inode" = "$_rsrg_moved_inode" ] || log "严格回收门禁隔离副本还原后 inode 复验失败：$_rsrg_quarantine"
+            else
+                log "严格回收门禁隔离副本还原失败：$_rsrg_quarantine"
+            fi
+        else
+            log "原回收门禁路径已重建，跳过严格隔离副本还原：$_rsrg_quarantine"
+        fi
+        return 1
+    fi
+    rm -rf "$_rsrg_quarantine" 2>/dev/null || return 1
+    [ ! -e "$_rsrg_quarantine" ] || return 1
+    log "已安全恢复遗留回收门禁：$_rsrg_gate"
+    return 0
+}
+recover_stale_reap_gates() {
+    daemon_alive && { log "daemon 仍运行，拒绝恢复回收门禁"; return 1; }
+    supervisor_alive && { log "supervisor 仍运行，拒绝恢复回收门禁"; return 1; }
+    _rsrg_rc=0
+    for _rsrg_path in "$PROFILE_LOCK.reap" "$SUPLOCK.reap" "$DAEMON_LOCK.reap" "$SESSION_LOCK.reap"; do
+        recover_stale_reap_gate "$_rsrg_path" || _rsrg_rc=1
+    done
+    return "$_rsrg_rc"
+}
+
 # supervisor 使用独立目录锁，避免 service.sh 和手动 start 并发拉起多个实例。
 acquire_supervisor_lock() {
     _asl_tries=0
@@ -1416,6 +1669,11 @@ acquire_supervisor_lock() {
                 continue
             fi
             _asl_start=$(proc_start_time $$ 2>/dev/null) || _asl_start=
+            [ -n "$_asl_start" ] || {
+                rmdir "$SUPLOCK" 2>/dev/null
+                log "无法读取 supervisor 锁属主启动时间，拒绝启动"
+                return 1
+            }
             _asl_tmp="$SUPLOCK/pid.tmp.$$"
             if ! printf '%s %s\n' "$$" "$_asl_start" > "$_asl_tmp" 2>/dev/null || ! mv -f "$_asl_tmp" "$SUPLOCK/pid" 2>/dev/null; then
                 rm -f "$_asl_tmp" "$SUPLOCK/pid" 2>/dev/null
@@ -1478,7 +1736,8 @@ remove_pidfile_if_unchanged() {
 }
 
 stop_daemon() {
-    set_stopped 1
+    set_stopped 1 || { log "无法写入停止标记，拒绝终止/恢复守护进程"; return 1; }
+    [ "$(read_node "$STOPF" 2>/dev/null)" = 1 ] || { log "停止标记读回校验失败"; return 1; }
     _sd_sp_existed=0; [ -f "$SUPIDF" ] && _sd_sp_existed=1
     _sd_dp_existed=0; [ -f "$PIDF" ] && _sd_dp_existed=1
     _sd_sp_line=$(read_node "$SUPIDF" 2>/dev/null) || _sd_sp_line=
@@ -1489,6 +1748,56 @@ stop_daemon() {
     _sd_dp=${_sd_dp_line%% *}
     _sd_dp_start=${_sd_dp_line#* }
     [ "$_sd_dp_start" = "$_sd_dp_line" ] && _sd_dp_start=
+    # PID 文件可能在进程取得锁后、发布 PID 前遭遇 SIGKILL，或残留旧实例记录；
+    # 缺失、格式无效、属主已死亡或 PID 已复用时，回退读取锁目录的 PID+starttime。
+    # PID 仍存在但身份/启动时间无法确认时，保留原记录并在后续检查中 fail-closed。
+    _sd_sp_fallback=0
+    _sd_sp_unverified_pid=
+    case "$_sd_sp" in ''|*[!0-9]*) _sd_sp_fallback=1 ;; esac
+    case "$_sd_sp_start" in ''|*[!0-9]*) _sd_sp_fallback=1 ;; esac
+    if [ "$_sd_sp_fallback" = 0 ] && ! pid_is_ours "$_sd_sp" supervisor "$_sd_sp_start"; then
+        if [ ! -d "$PROC/$_sd_sp" ]; then
+            _sd_sp_fallback=1
+        else
+            _sd_sp_live=$(proc_start_time "$_sd_sp" 2>/dev/null) || _sd_sp_live=
+            # PID 仍存在但身份/启动时间无法确认时，保留原记录并在后续检查中 fail-closed。
+            [ -n "$_sd_sp_live" ] && [ "$_sd_sp_live" != "$_sd_sp_start" ] && _sd_sp_fallback=1
+        fi
+    fi
+    if [ "$_sd_sp_fallback" = 1 ]; then
+        case "$_sd_sp_start" in *[!0-9]*)
+            case "$_sd_sp" in ''|*[!0-9]*) ;; *) [ -d "$PROC/$_sd_sp" ] && _sd_sp_unverified_pid=$_sd_sp ;; esac
+        esac
+        _sd_sp_lock_line=$(read_node "$SUPLOCK/pid" 2>/dev/null) || _sd_sp_lock_line=
+        _sd_sp=${_sd_sp_lock_line%% *}
+        _sd_sp_start=${_sd_sp_lock_line#* }
+        [ "$_sd_sp_start" = "$_sd_sp_lock_line" ] && _sd_sp_start=
+        [ -n "$_sd_sp" ] || _sd_sp_start=
+        [ -n "$_sd_sp" ] && _sd_sp_unverified_pid=
+    fi
+    _sd_dp_fallback=0
+    _sd_dp_unverified_pid=
+    case "$_sd_dp" in ''|*[!0-9]*) _sd_dp_fallback=1 ;; esac
+    case "$_sd_dp_start" in ''|*[!0-9]*) _sd_dp_fallback=1 ;; esac
+    if [ "$_sd_dp_fallback" = 0 ] && ! pid_is_ours "$_sd_dp" daemon "$_sd_dp_start"; then
+        if [ ! -d "$PROC/$_sd_dp" ]; then
+            _sd_dp_fallback=1
+        else
+            _sd_dp_live=$(proc_start_time "$_sd_dp" 2>/dev/null) || _sd_dp_live=
+            [ -n "$_sd_dp_live" ] && [ "$_sd_dp_live" != "$_sd_dp_start" ] && _sd_dp_fallback=1
+        fi
+    fi
+    if [ "$_sd_dp_fallback" = 1 ]; then
+        case "$_sd_dp_start" in *[!0-9]*)
+            case "$_sd_dp" in ''|*[!0-9]*) ;; *) [ -d "$PROC/$_sd_dp" ] && _sd_dp_unverified_pid=$_sd_dp ;; esac
+        esac
+        _sd_dp_lock_line=$(read_node "$DAEMON_LOCK/pid" 2>/dev/null) || _sd_dp_lock_line=
+        _sd_dp=${_sd_dp_lock_line%% *}
+        _sd_dp_start=${_sd_dp_lock_line#* }
+        [ "$_sd_dp_start" = "$_sd_dp_lock_line" ] && _sd_dp_start=
+        [ -n "$_sd_dp" ] || _sd_dp_start=
+        [ -n "$_sd_dp" ] && _sd_dp_unverified_pid=
+    fi
 
     pid_is_ours "$_sd_sp" supervisor "$_sd_sp_start" && kill "$_sd_sp" 2>/dev/null
     pid_is_ours "$_sd_dp" daemon "$_sd_dp_start" && kill "$_sd_dp" 2>/dev/null
@@ -1516,7 +1825,7 @@ stop_daemon() {
         _sd_wait2=$((_sd_wait2 + 1))
     done
     _sd_failed=0
-    for _sd_pair in "$_sd_sp|$_sd_sp_start|supervisor" "$_sd_dp|$_sd_dp_start|daemon"; do
+    for _sd_pair in "$_sd_sp|$_sd_sp_start|supervisor" "$_sd_dp|$_sd_dp_start|daemon" "$_sd_sp_unverified_pid||supervisor" "$_sd_dp_unverified_pid||daemon"; do
         _sd_p=${_sd_pair%%|*}; _sd_rest=${_sd_pair#*|}
         _sd_st=${_sd_rest%%|*}; _sd_kind=${_sd_rest#*|}
         case "$_sd_p" in ''|*[!0-9]*) continue ;; esac
@@ -1536,6 +1845,223 @@ stop_daemon() {
     remove_pidfile_if_unchanged "$SUPIDF" "$_sd_sp_line" "$_sd_sp_existed"
     log "守护进程停止已确认（等待 $((_sd_wait / 5))s + $((_sd_wait2 / 5))s）"
     return 0
+}
+
+# 生命周期锁独立于 profile/supervisor/daemon 锁，覆盖完整启停事务。
+# 使用 PID+starttime；陈旧锁按既有 reaper 协议回收，身份不确定时拒绝操作。
+acquire_session_lock() {
+    _acl_tries=0
+    while [ "$_acl_tries" -lt 20 ]; do
+        if [ -d "$SESSION_LOCK.reap" ]; then
+            recover_stale_reap_gate "$SESSION_LOCK.reap" || { sleep 0.2; _acl_tries=$((_acl_tries + 1)); continue; }
+        fi
+        if mkdir "$SESSION_LOCK" 2>/dev/null; then
+            if [ -d "$SESSION_LOCK.reap" ]; then
+                rmdir "$SESSION_LOCK" 2>/dev/null
+                sleep 0.2
+                _acl_tries=$((_acl_tries + 1))
+                continue
+            fi
+            _session_lock_start=$(proc_start_time $$ 2>/dev/null) || _session_lock_start=
+            [ -n "$_session_lock_start" ] || {
+                rmdir "$SESSION_LOCK" 2>/dev/null
+                log "无法读取生命周期锁属主启动时间，拒绝启停操作"
+                return 1
+            }
+            _acl_tmp="$SESSION_LOCK/pid.tmp.$$"
+            if ! printf '%s %s\n' "$$" "$_session_lock_start" > "$_acl_tmp" 2>/dev/null || ! mv -f "$_acl_tmp" "$SESSION_LOCK/pid" 2>/dev/null; then
+                rm -f "$_acl_tmp" 2>/dev/null
+                rmdir "$SESSION_LOCK" 2>/dev/null
+                log "生命周期锁记录失败，拒绝启停操作"
+                return 1
+            fi
+            [ "$(read_node "$SESSION_LOCK/pid" 2>/dev/null)" = "$$ $_session_lock_start" ] || {
+                rm -f "$SESSION_LOCK/pid" 2>/dev/null
+                rmdir "$SESSION_LOCK" 2>/dev/null
+                log "生命周期锁归属校验失败，拒绝启停操作"
+                return 1
+            }
+            return 0
+        fi
+        [ -d "$SESSION_LOCK.reap" ] || reap_lock_dir "$SESSION_LOCK" || :
+        sleep 0.2
+        _acl_tries=$((_acl_tries + 1))
+    done
+    log "生命周期操作正在执行或锁状态不明确；本次操作拒绝执行"
+    return 1
+}
+release_session_lock() {
+    _rcl_line=$(read_node "$SESSION_LOCK/pid" 2>/dev/null) || _rcl_line=
+    _rcl_start=$(proc_start_time $$ 2>/dev/null) || _rcl_start=${_session_lock_start:-}
+    if [ "$_rcl_line" = "$$ $_rcl_start" ]; then
+        rm -f "$SESSION_LOCK/pid" 2>/dev/null
+        rmdir "$SESSION_LOCK" 2>/dev/null
+    fi
+}
+
+# ---------- 会话生命周期（手动启停 / 重新初始化） ----------
+# 适配 KernelSU Next 临时注入 Root：模块可能在系统运行中才被手动拉起，
+# 不依赖开机阶段的 post-fs-data/service 脚本执行过。手动与开机共用同一套
+# 启停路径（sf_start / sf_stop / sf_reinit），保证两种入口行为一致。
+
+# 每次启动先重新初始化会话状态，原始参数一律重新读取，绝不沿用上个会话
+# 遗留的快照作为本会话基线：
+# - 上个会话若留下未恢复的应用记录（异常退出），先按其快照把仍归本模块的
+#   节点恢复到记录中的原始值——遗留数据只作这一次恢复的依据；
+# - 随后清空 DEF/APPLIED，本会话的原始值由 capture_all 从当前节点重读。
+# 恢复不完整时 fail-closed：拒绝启动，避免把已修改的值当作原始值采集。
+reinit_session() {
+    if [ -s "$APPLIED" ]; then
+        log "检测到上个会话未恢复的应用记录，先按遗留快照恢复"
+        restore_all || {
+            log "遗留恢复未完成，保留状态文件供排查，拒绝启动"
+            return 1
+        }
+    fi
+    : > "$APPLIED" 2>/dev/null || { log "无法清空已恢复的应用记录"; return 1; }
+    [ ! -s "$APPLIED" ] || { log "应用记录清空校验失败"; return 1; }
+    : > "$DEF" 2>/dev/null || { log "无法清空旧基线快照"; return 1; }
+    [ ! -s "$DEF" ] || { log "基线快照清空校验失败"; return 1; }
+    return 0
+}
+
+# 内部实现仅由持有 SESSION_LOCK 的公共入口调用，避免 reinit 嵌套加锁。
+_sf_start_locked() {
+    _ss_ready=${1:-}
+    if [ -z "$_ss_ready" ]; then
+        _ss_ready=0
+        _ss_n=0
+        while [ "$_ss_n" -lt 15 ]; do
+            device_ok && { _ss_ready=1; break; }
+            sleep 1
+            _ss_n=$((_ss_n + 1))
+        done
+    fi
+    case "$_ss_ready" in 0|1) ;; *) log "启动就绪参数非法，拒绝启动"; return 1 ;; esac
+
+    # 先停旧守护；然后仅在没有活动守护时恢复可证明已死亡属主的 reap gate。
+    if [ -f "$PIDF" ] || [ -f "$SUPIDF" ] || daemon_alive || supervisor_alive; then
+        stop_daemon || { log "旧守护进程未能确认停止，拒绝启动新实例"; return 1; }
+    fi
+    recover_stale_reap_gates || { log "遗留回收门禁未能安全恢复，拒绝启动"; return 1; }
+    reinit_session || { log "会话重新初始化失败，拒绝启动"; return 1; }
+
+    if [ "$_ss_ready" = 1 ]; then
+        capture_all || { log "原始参数快照不完整，未写入调度节点，拒绝启动"; return 1; }
+        if [ "$(screen_state)" = 1 ]; then
+            apply_on || {
+                log "初始日常档应用失败，开始回滚本次已登记写入"
+                restore_all || log "启动失败回滚未完成；保留 DEF/APPLIED 供 stop 重试"
+                return 1
+            }
+            log "已应用日常档"
+        else
+            apply_off || {
+                log "初始熄屏恢复失败，拒绝启动"
+                return 1
+            }
+        fi
+    else
+        if ! device_identity_ok; then
+            log "设备身份不匹配或 GPU 标识节点不可用；拒绝启动调度守护"
+            return 1
+        fi
+        log "CPU 拓扑/WALT 节点未就绪；不写入参数，交给守护进程安全重试"
+        write_state off "" || { log "初始状态文件写入失败，拒绝启动"; return 1; }
+    fi
+
+    [ -f "$PROFILEF" ] || set_profile auto || { log "默认档位写入失败，拒绝启动"; restore_all || :; return 1; }
+    set_stopped 0 || {
+        log "无法清除停止标记，拒绝启动"
+        restore_all || :
+        return 1
+    }
+    [ "$(read_node "$STOPF" 2>/dev/null)" = 0 ] || {
+        log "停止标记读回校验失败，拒绝启动"
+        restore_all || :
+        return 1
+    }
+
+    _ss_launcher=
+    _ss_launcher_start=
+    if ! supervisor_alive; then
+        if command -v setsid >/dev/null 2>&1; then
+            setsid sh "$MODDIR/bin/supervisor.sh" >/dev/null 2>&1 &
+        else
+            sh "$MODDIR/bin/supervisor.sh" >/dev/null 2>&1 &
+        fi
+        _ss_launcher=$!
+        _ss_launcher_start=$(proc_start_time "$_ss_launcher" 2>/dev/null) || _ss_launcher_start=
+    fi
+
+    _ss_w=0
+    while [ "$_ss_w" -lt 10 ]; do
+        supervisor_alive && break
+        sleep 0.2
+        _ss_w=$((_ss_w + 1))
+    done
+    if supervisor_alive; then
+        log "启动完成（supervisor 已确认运行）"
+        return 0
+    fi
+
+    log "启动后 supervisor 未确认运行；停止可能已启动的子进程并回滚"
+    set_stopped 1 || log "启动失败后停止标记写入失败"
+    stop_daemon || {
+        log "启动失败后仍无法确认守护进程停止；保留快照，不执行可能与守护竞争的恢复"
+        return 1
+    }
+    # 若 launcher 仍是本模块 supervisor，按 PID+starttime+cmdline 再次核验后终止。
+    if [ -n "$_ss_launcher" ] && [ -n "$_ss_launcher_start" ] \
+       && pid_is_ours "$_ss_launcher" supervisor "$_ss_launcher_start"; then
+        kill -TERM "$_ss_launcher" 2>/dev/null || :
+        sleep 0.2
+        pid_is_ours "$_ss_launcher" supervisor "$_ss_launcher_start" && kill -9 "$_ss_launcher" 2>/dev/null || :
+    fi
+    restore_all || { log "启动失败回滚未完成；保留快照供 stop 重试"; return 1; }
+    return 1
+}
+
+_sf_stop_locked() {
+    stop_daemon || { log "守护进程未确认停止，保留快照并拒绝恢复"; return 1; }
+    restore_all || { log "停止时恢复未完成，保留状态文件供重试"; return 1; }
+    : > "$APPLIED" 2>/dev/null || { log "无法清空 APPLIED，停止未完成"; return 1; }
+    [ ! -s "$APPLIED" ] || { log "APPLIED 清空校验失败"; return 1; }
+    : > "$DEF" 2>/dev/null || { log "无法清空 DEF，停止未完成"; return 1; }
+    [ ! -s "$DEF" ] || { log "DEF 清空校验失败"; return 1; }
+    set_stopped 1 || { log "停止标记写入失败"; return 1; }
+    [ "$(read_node "$STOPF" 2>/dev/null)" = 1 ] || { log "停止标记读回校验失败"; return 1; }
+    log "已停止并恢复原始调度参数"
+    return 0
+}
+
+sf_start() {
+    acquire_session_lock || return 1
+    _sf_start_locked "${1:-}"
+    _sf_rc=$?
+    release_session_lock
+    return "$_sf_rc"
+}
+
+sf_stop() {
+    acquire_session_lock || return 1
+    _sf_stop_locked
+    _sf_rc=$?
+    release_session_lock
+    return "$_sf_rc"
+}
+
+sf_reinit() {
+    acquire_session_lock || return 1
+    log "重新初始化：先停止并恢复，再以全新基线启动"
+    _sf_stop_locked
+    _sf_rc=$?
+    if [ "$_sf_rc" = 0 ]; then
+        _sf_start_locked
+        _sf_rc=$?
+    fi
+    release_session_lock
+    return "$_sf_rc"
 }
 
 # ---------- 屏幕状态（零 dumpsys 快路径） ----------

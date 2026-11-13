@@ -1,21 +1,27 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.6-rc1 状态守护
+# SmoothFlow 5.0.6-rc7 状态守护
 # 节拍 10 秒；热路径只做 Shell 内建 procfs/sysfs 读取，不调用 dumpsys。
 # 仅在状态变化时写 sysfs，参数不变时零写入。
 MODDIR=$(cd "${0%/*}/.." && pwd)
 . "$MODDIR/bin/core.sh"
 
-daemon_alive && { log "检测到已有 daemon 实例，拒绝重复启动"; exit 0; }
+if ! acquire_daemon_lock; then
+    log "daemon 已运行或锁状态不明确，拒绝重复启动"
+    exit 0
+fi
+daemon_alive && { release_daemon_lock; log "检测到已有 daemon 实例，拒绝重复启动"; exit 0; }
 _daemon_start=$(proc_start_time $$ 2>/dev/null) || _daemon_start=
 [ -n "$_daemon_start" ] || {
     log "无法读取 daemon 启动时间，拒绝进入后台循环"
+    release_daemon_lock
     exit 1
 }
 cleanup_daemon() {
     _cd_now=$(read_node "$PIDF" 2>/dev/null) || _cd_now=
     [ "$_cd_now" = "$$ $_daemon_start" ] && rm -f "$PIDF" 2>/dev/null
+    release_daemon_lock
 }
 # 正常退出、停止标记退出及信号退出均清理自身 PID 文件；不碰其它实例的记录。
 trap 'cleanup_daemon' EXIT
@@ -24,11 +30,13 @@ _daemon_pid_tmp="$PIDF.tmp.$$"
 if ! printf '%s %s\n' "$$" "$_daemon_start" > "$_daemon_pid_tmp" 2>/dev/null || ! mv -f "$_daemon_pid_tmp" "$PIDF" 2>/dev/null; then
     rm -f "$_daemon_pid_tmp" 2>/dev/null
     log "daemon PID 文件写入失败，拒绝进入后台循环"
+    release_daemon_lock
     exit 1
 fi
 _daemon_saved=$(read_node "$PIDF" 2>/dev/null) || _daemon_saved=
 if [ "$_daemon_saved" != "$$ $_daemon_start" ]; then
     log "daemon PID 文件读回校验失败，拒绝进入后台循环"
+    release_daemon_lock
     exit 1
 fi
 log "守护进程启动 pid=$$ 节拍=10s 快路径=procfs"

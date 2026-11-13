@@ -1,7 +1,7 @@
 #!/system/bin/sh
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (c) 2026 硕
-# SmoothFlow 5.0.6-rc1 隔离自测
+# SmoothFlow 5.0.6-rc7 隔离自测
 # 在临时目录里构造假的 sysfs / procfs / cgroup，验证：
 #   拓扑识别、日常/游戏/省电档写入、恢复语义、拓扑失效 fail-closed、
 #   配置白名单解析、cgroup 游戏识别、屏幕状态快路径。
@@ -102,7 +102,12 @@ printf "com.miHoYo.Genshin\n" > "$PROC/100/cmdline"
 printf 'com.android.launcher3\n' > "$PROC/101/cmdline"
 printf '100\n101\n' > "$CG/top-app/cgroup.procs"
 
-run() { sh -c ". '$CORE'; $1"; }
+# rc6 起 lock_profile / supervisor 锁在发布属主记录前要求能读到自身
+# starttime（与 daemon/session 锁既有守卫一致，读不到则拒绝发布残缺记录）。
+# run 子进程是真实进程，但夹具的假 /proc 里没有它的 stat 条目，故在每个
+# run 块执行前把子进程自身的 stat 建模进假 /proc（starttime 固定 424242，
+# 仅供身份比对；需要真实身份语义的条目在块内自行改用 /proc，与既有惯例同）。
+run() { sh -c ". '$CORE'; mkdir -p \"\$PROC/\$\$\" 2>/dev/null; printf '%s (sh) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 424242\n' \"\$\$\" > \"\$PROC/\$\$/stat\" 2>/dev/null; $1"; }
 
 # ---- 1. 拓扑识别 ----
 OUT=$(run 'printf "%s|%s|%s|%s\n" "$CPU_TOPOLOGY_OK" "${CPU0##*/}" "${CPU6##*/}" "$WALT_OK"')
@@ -122,9 +127,11 @@ expect "$P6/walt/up_rate_limit_us" "0" "未配置时不改 up_rate_limit"
 # ---- 3. 游戏档 ----
 run 'apply_game' && ok "apply_game 返回成功" || bad "apply_game 返回非 0"
 expect "$P0/walt/hispeed_freq" 1804800 "游戏档 hispeed_freq(低簇)"
-expect "$P0/walt/hispeed_load" 80 "游戏档 hispeed_load(低簇)"
+expect "$P0/walt/hispeed_load" 78 "游戏档 hispeed_load(低簇)"
 expect "$P6/walt/rtg_boost_freq" 1996800 "游戏档 rtg_boost(高簇)"
-expect "$P0/walt/down_rate_limit_us" 8000 "游戏档 down_rate_limit"
+expect "$P0/walt/down_rate_limit_us" 10000 "游戏档 down_rate_limit"
+expect "$P0/walt/hispeed_load" 78 "游戏档低簇 hispeed_load"
+expect "$P6/walt/hispeed_load" 78 "游戏档高簇 hispeed_load"
 expect "$CG/top-app/cpu.uclamp.min" "20.00" "游戏档 top-app uclamp"
 
 # ---- 3.1 游戏档回到日常档：撤销自己抬高的参数，同时保留厂商原本更高值 ----
@@ -460,13 +467,13 @@ OUT=$(run '
 
 # ---- 30. 锁属主 PID 复用与活进程判定（M2） ----
 OUT=$(run '
-    mkdir -p "$PROC/4244" "$PROC/4245" "$DATA/lock-reused" "$DATA/lock-live"
+    mkdir -p "$PROC/4244" "$PROC/4245" "$DATADIR/lock-reused" "$DATADIR/lock-live"
     printf "4244 (old owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 222\\n" > "$PROC/4244/stat"
     printf "4245 (live owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 333\\n" > "$PROC/4245/stat"
-    printf "4244 111\\n" > "$DATA/lock-reused/pid"
-    printf "4245 333\\n" > "$DATA/lock-live/pid"
-    lock_owner_stale "$DATA/lock-reused"; _reused=$?
-    lock_owner_stale "$DATA/lock-live"; _live=$?
+    printf "4244 111\\n" > "$DATADIR/lock-reused/pid"
+    printf "4245 333\\n" > "$DATADIR/lock-live/pid"
+    lock_owner_stale "$DATADIR/lock-reused"; _reused=$?
+    lock_owner_stale "$DATADIR/lock-live"; _live=$?
     printf "%s|%s" "$_reused" "$_live"
 ')
 [ "$OUT" = "0|1" ] && ok "锁回收识别 PID 重用，同时保护启动时间匹配的活属主" || bad "锁属主身份判定：[$OUT]"
@@ -493,14 +500,502 @@ OUT=$(run '
 
 # ---- 33. 活跃 reap gate 必须 fail-closed，且不能被并发等待者删除 ----
 OUT=$(run '
-    mkdir -p "$PROC/4260" "$DATA/live-gate.reap"
+    mkdir -p "$PROC/4260" "$DATADIR/live-gate.reap"
     printf "4260 (owner) S 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 660\\n" > "$PROC/4260/stat"
-    printf "4260 660\\n" > "$DATA/live-gate.reap/pid"
-    reap_gate_stale "$DATA/live-gate.reap"; _rc=$?
-    printf "%s|%s" "$_rc" "$( [ -d "$DATA/live-gate.reap" ] && echo present || echo absent )"
+    printf "4260 660\\n" > "$DATADIR/live-gate.reap/pid"
+    reap_gate_stale "$DATADIR/live-gate.reap"; _rc=$?
+    printf "%s|%s" "$_rc" "$( [ -d "$DATADIR/live-gate.reap" ] && echo present || echo absent )"
 ')
 [ "$OUT" = "1|present" ] && ok "活跃 reap gate 保持 fail-closed，不被回收" || bad "活跃 reap gate 保护：[$OUT]"
 
+
+
+# ---- 34. sf_stop：停止后恢复全部受管节点并清空会话状态 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    capture_all
+    _orig=$(read_node "$W0/hispeed_load")
+    apply_game >/dev/null 2>&1
+    _mid=$(read_node "$W0/hispeed_load")
+    sf_stop >/dev/null 2>&1; _rc=$?
+    _after=$(read_node "$W0/hispeed_load")
+    is_stopped; _stopped=$?
+    printf "%s|%s|%s|%s|%s|%s" "$_rc" "$_mid" "$([ "$_after" = "$_orig" ] && echo same || echo diff)" "$_stopped" "$([ -s "$APPLIED" ] && echo nonempty || echo empty)" "$([ -s "$DEF" ] && echo nonempty || echo empty)"
+')
+[ "$OUT" = "0|78|same|0|empty|empty" ] && ok "sf_stop 恢复原始参数并清空会话状态" || bad "sf_stop 生命周期：[$OUT]"
+
+# ---- 35. 脏会话重新初始化：遗留未恢复记录先恢复，基线重读当前值 ----
+OUT=$(run '
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK"
+    capture_all
+    _orig=$(read_node "$W0/hispeed_load")
+    apply_game >/dev/null 2>&1
+    reinit_session; _rc=$?
+    _after=$(read_node "$W0/hispeed_load")
+    capture_all
+    _defv=$(def_of "$W0/hispeed_load")
+    printf "%s|%s|%s" "$_rc" "$([ "$_after" = "$_orig" ] && echo same || echo diff)" "$([ "$_defv" = "$_orig" ] && echo same || echo diff)"
+')
+[ "$OUT" = "0|same|same" ] && ok "重新初始化先恢复遗留状态，原始参数重新读取" || bad "脏会话重新初始化：[$OUT]"
+
+# ---- 36. 空状态下 sf_stop 与 reinit_session 幂等 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    sf_stop >/dev/null 2>&1; _rc1=$?
+    reinit_session; _rc2=$?
+    printf "%s|%s" "$_rc1" "$_rc2"
+')
+[ "$OUT" = "0|0" ] && ok "空状态停止与重新初始化幂等" || bad "幂等性：[$OUT]"
+
+# ---- 37. 手动启停全周期：真实 supervisor/daemon 拉起、应用、停止恢复 ----
+# pid_is_ours 按正式安装路径片段 smoothflow/bin/*.sh 校验进程身份，
+# 因此把 bin/ 复制到名为 smoothflow 的目录作为本节的模块根。
+MODROOT="$T/smoothflow"
+mkdir -p "$MODROOT"
+cp -r "$HERE/../bin" "$MODROOT/"
+# 拉起的 supervisor/daemon 必须与自测共用测试模式 core（发布包里的
+# bin/core.sh 已固化真实路径，不读 SF_* 环境）；以本套件选定的 $CORE 覆盖。
+cp "$CORE" "$MODROOT/bin/core.sh"
+export MODDIR="$MODROOT"
+OUT=$(run '
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK"
+    PROC=/proc; export SF_PROC=/proc
+    capture_all
+    _orig=$(read_node "$W0/hispeed_load")
+    sf_start 1 >/dev/null 2>&1; _rc=$?
+    _w=0; while [ "$_w" -lt 15 ]; do daemon_alive && break; sleep 0.2; _w=$((_w + 1)); done
+    _sup_line=$(read_node "$SUPIDF"); _sp=${_sup_line%% *}; _sp_start=${_sup_line#* }
+    _dae_line=$(read_node "$PIDF"); _dp=${_dae_line%% *}; _dp_start=${_dae_line#* }
+    supervisor_alive; _sup=$?
+    daemon_alive; _dae=$?
+    apply_game >/dev/null 2>&1
+    sf_stop >/dev/null 2>&1; _src=$?
+    stop_daemon >/dev/null 2>&1
+    _sp_live=0; if [ -d "/proc/$_sp" ]; then _st=$(proc_state "$_sp"); case "$_st" in Z|X) ;; *) _sp_live=1 ;; esac; fi
+    _dp_live=0; if [ -d "/proc/$_dp" ]; then _st=$(proc_state "$_dp"); case "$_st" in Z|X) ;; *) _dp_live=1 ;; esac; fi
+    _after=$(read_node "$W0/hispeed_load")
+    printf "%s|%s|%s|%s|%s|%s|%s|%s" "$_rc" "$_sup" "$_dae" "$_src" "$([ "$_after" = "$_orig" ] && echo same || echo diff)" "$([ -f "$PIDF" ] && echo present || echo gone)" "$_sp_live" "$_dp_live"
+')
+[ "$OUT" = "0|0|0|0|same|gone|0|0" ] && ok "手动启动拉起守护、停止后恢复并确认进程退出" || bad "手动启停全周期：[$OUT]"
+
+# ---- 38. Supervisor 退避状态机：指数退避、上限、稳定复位与熔断 ----
+OUT=$(run '
+    a=$(supervisor_backoff_update 1 0 10)
+    b=$(supervisor_backoff_update 1 1 10)
+    c=$(supervisor_backoff_update 1 2 20)
+    d=$(supervisor_backoff_update 1 7 300)
+    e=$(supervisor_backoff_update 60 7 300)
+    printf "%s|%s|%s|%s|%s" "$a" "$b" "$c" "$d" "$e"
+')
+[ "$OUT" = "1 10 0|2 20 0|3 40 0|8 300 1|0 10 0" ] && ok "Supervisor 指数退避、300 秒上限、8 次熔断和稳定复位" || bad "Supervisor 退避状态机：[$OUT]"
+
+# ---- 39. daemon 原子锁与 session 生命周期锁可获取并按属主释放 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    acquire_daemon_lock; _a=$?
+    [ -d "$DAEMON_LOCK" ] && _ad=1 || _ad=0
+    release_daemon_lock
+    acquire_session_lock; _b=$?
+    [ -d "$SESSION_LOCK" ] && _se=1 || _se=0
+    release_session_lock
+    printf "%s|%s|%s|%s|%s|%s" "$_a" "$_ad" "$([ ! -e "$DAEMON_LOCK" ] && echo gone || echo present)" "$_b" "$_se" "$([ ! -e "$SESSION_LOCK" ] && echo gone || echo present)"
+')
+[ "$OUT" = "0|1|gone|0|1|gone" ] && ok "daemon 与 session 锁获取、归属校验及释放" || bad "daemon/session 锁：[$OUT]"
+
+# ---- 40. stale reap gate 启动恢复：只回收能确认 PID 已死亡的 gate ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    _gate="$DATADIR/test.reap"
+    mkdir -p "$_gate"
+    printf "99999999 1\n" > "$_gate/pid"
+    recover_stale_reap_gate "$_gate"; _dead=$?
+    [ ! -e "$_gate" ] && _gone=1 || _gone=0
+    mkdir -p "$_gate"
+    _self_start=$(proc_start_time $$)
+    printf "%s %s\n" "$$" "$_self_start" > "$_gate/pid"
+    recover_stale_reap_gate "$_gate" >/dev/null 2>&1; _live=$?
+    [ -d "$_gate" ] && _kept=1 || _kept=0
+    printf "%s|%s|%s|%s" "$_dead" "$_gone" "$_live" "$_kept"
+    rm -rf "$_gate"
+')
+[ "$OUT" = "0|1|1|1" ] && ok "reap gate 恢复只清理已确认死亡属主，活跃属主保持 fail-closed" || bad "stale reap gate 恢复：[$OUT]"
+
+# ---- 41. session .reap gate 无属主证明时 fail-closed，有死亡 PID+starttime 时可恢复 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -rf "$SESSION_LOCK" "$SESSION_LOCK.reap"
+    mkdir -p "$SESSION_LOCK.reap"
+    recover_stale_reap_gate "$SESSION_LOCK.reap" >/dev/null 2>&1; _missing=$?
+    [ -d "$SESSION_LOCK.reap" ] && _kept=1 || _kept=0
+    rm -rf "$SESSION_LOCK.reap"
+    mkdir -p "$SESSION_LOCK.reap"
+    printf "99999999 1\n" > "$SESSION_LOCK.reap/pid"
+    acquire_session_lock >/dev/null 2>&1; _acq=$?
+    [ ! -e "$SESSION_LOCK.reap" ] && _recovered=1 || _recovered=0
+    release_session_lock
+    printf "%s|%s|%s|%s" "$_missing" "$_kept" "$_acq" "$_recovered"
+')
+[ "$OUT" = "1|1|0|1" ] && ok "session reap gate 缺少属主证明时保留，确认死亡属主后才恢复" || bad "session reap gate：[$OUT]"
+
+# ---- 42. PID 文件缺失/过期时，stop_daemon 能从 supervisor/daemon 锁记录识别实例 ----
+OUT=$(run '
+    rm -f "$STOPF" "$DATADIR/killed"
+    printf "999989 99\n" > "$SUPIDF"
+    printf "999990 100\n" > "$PIDF"
+    mkdir -p "$SUPLOCK" "$DAEMON_LOCK"
+    printf "999991 101\n" > "$SUPLOCK/pid"
+    printf "999992 201\n" > "$DAEMON_LOCK/pid"
+    _pid_calls=0
+    pid_is_ours() {
+        case "$1:$2" in 999991:supervisor|999992:daemon)
+            _pid_calls=$((_pid_calls + 1))
+            [ "$_pid_calls" -le 2 ] && return 0
+            ;;
+        esac
+        return 1
+    }
+    kill() { printf "%s\n" "$*" >> "$DATADIR/killed"; return 0; }
+    stop_daemon >/dev/null 2>&1; _rc=$?
+    _k=$(tr "\n" , < "$DATADIR/killed")
+    printf "%s|%s" "$_rc" "$_k"
+')
+[ "$OUT" = "0|999991,999992," ] && ok "PID 文件未发布时可用锁目录 PID+starttime 停止守护实例" || bad "锁记录 PID 回退：[$OUT]"
+
+# ---- 43. capture_all 失败时启动必须中止，不能启动守护或写调度节点 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    _node="$W0/hispeed_load"; _orig=$(read_node "$_node")
+    capture_all() { return 1; }
+    printf "%s\n" 100 > "$BL"; printf "%s\n" On > "$SYS/class/drm/card0-DSI-1/dpms"
+    sf_start 1 >/dev/null 2>&1; _rc=$?
+    [ -s "$APPLIED" ] && _ap=1 || _ap=0
+    [ -f "$SUPIDF" ] && _sup=1 || _sup=0
+    printf "%s|%s|%s|%s" "$_rc" "$_ap" "$_sup" "$(read_node "$_node")"
+')
+[ "$OUT" = "1|0|0|90" ] && ok "快照采集失败时启动中止且不拉起守护/不登记写入" || bad "capture 失败启动门禁：[$OUT]"
+
+# ---- 44. 初始档位部分写入后返回失败时，按归属记录回滚 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    _node="$W0/hispeed_load"; _orig=$(read_node "$_node")
+    printf "%s\n" 100 > "$BL"; printf "%s\n" On > "$SYS/class/drm/card0-DSI-1/dpms"
+    apply_on() { printf "%s\n" called > "$DATADIR/apply_called"; set_val "$W0/hispeed_load" 78; return 1; }
+    _screen=$(screen_state)
+    sf_start 1 >/dev/null 2>&1; _rc=$?
+    _after=$(read_node "$_node")
+    [ -f "$DATADIR/apply_called" ] && _called=1 || _called=0
+    printf "%s|%s|%s|%s|%s" "$_rc" "$_screen" "$_called" "$([ "$_after" = "$_orig" ] && echo restored || echo changed)" "$([ -f "$SUPIDF" ] && echo started || echo absent)"
+')
+[ "$OUT" = "1|1|1|restored|absent" ] && ok "初始档位部分写入失败后安全回滚且不启动 supervisor" || bad "初始应用失败回滚：[$OUT]"
+
+# ---- 45. Supervisor 启动失败时停止启动事务并回滚初始写入 ----
+_SUPERVISOR_BACKUP="$MODROOT/bin/supervisor.sh"
+cp "$_SUPERVISOR_BACKUP" "$T/supervisor.good"
+printf '#!/system/bin/sh\nexit 1\n' > "$_SUPERVISOR_BACKUP"
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    _orig=$(read_node "$W0/hispeed_load")
+    sf_start 1 >/dev/null 2>&1; _rc=$?
+    _after=$(read_node "$W0/hispeed_load")
+    printf "%s|%s|%s|%s" "$_rc" "$([ "$_after" = "$_orig" ] && echo restored || echo changed)" "$([ -s "$APPLIED" ] && echo retained || echo empty)" "$(read_node "$STOPF" 2>/dev/null)"
+')
+cp "$T/supervisor.good" "$_SUPERVISOR_BACKUP"
+[ "$OUT" = "1|restored|empty|1" ] && ok "Supervisor 启动失败后恢复节点、清空已完成记录并保持停止态" || bad "Supervisor 启动失败回滚：[$OUT]"
+
+# ---- 46. 停止标记写入失败时不得恢复/清空快照，也不得报告成功 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    capture_all
+    _orig=$(read_node "$W0/hispeed_load")
+    apply_game >/dev/null 2>&1
+    rm -f "$STOPF"; mkdir "$STOPF"
+    sf_stop >/dev/null 2>&1; _bad_rc=$?
+    _kept=0; [ -s "$APPLIED" ] && _kept=1
+    rmdir "$STOPF"
+    sf_stop >/dev/null 2>&1; _good_rc=$?
+    _after=$(read_node "$W0/hispeed_load")
+    printf "%s|%s|%s|%s" "$_bad_rc" "$_kept" "$_good_rc" "$([ "$_after" = "$_orig" ] && echo restored || echo changed)"
+')
+[ "$OUT" = "1|1|0|restored" ] && ok "停止标记写入失败时保留快照并返回失败，修复后可重试恢复" || bad "stop 标记故障注入：[$OUT]"
+
+# ---- 47. 系统分区写入静态守卫：运行时脚本不得出现分区写入目标 ----
+GUARD=ok
+for _gf in bin/core.sh bin/daemon.sh bin/supervisor.sh service.sh post-fs-data.sh action.sh uninstall.sh scripts/package.sh; do
+    [ -f "$HERE/../$_gf" ] || continue
+    grep -Eq '/dev/block|by-name|init_boot|fastboot|dd if=|dd of=/dev|mke2fs|flash_image|/odm/|update_engine' "$HERE/../$_gf" && GUARD="hit:$_gf"
+done
+[ "$GUARD" = ok ] && ok "运行时脚本无 boot/init_boot/system 等分区写入目标" || bad "分区写入守卫：[$GUARD]"
+
+
+# ---- 48. M1：无属主记录的陈旧 reap gate 可恢复，新鲜 gate 必须保留 ----
+rm -rf "$DATA/profile.lock.reap"
+mkdir -p "$DATA/profile.lock.reap"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+OUT=$(run '
+    rm -f "$PIDF" "$SUPIDF"
+    recover_stale_reap_gates; _rc=$?
+    printf "%s|%s" "$_rc" "$([ -d "$PROFILE_LOCK.reap" ] && echo kept || echo gone)"
+')
+[ "$OUT" = "0|gone" ] && ok "无 pid 记录的陈旧 reap gate 经时限协议恢复（M1）" || bad "陈旧无主 gate 恢复：[$OUT]"
+mkdir -p "$DATA/profile.lock.reap"
+OUT=$(run '
+    recover_stale_reap_gates; _rc=$?
+    printf "%s|%s" "$_rc" "$([ -d "$PROFILE_LOCK.reap" ] && echo kept || echo gone)"
+')
+[ "$OUT" = "1|kept" ] && ok "新鲜的无 pid 记录 gate 不得按时限回收（fail-closed）" || bad "新鲜无主 gate 保留：[$OUT]"
+rm -rf "$DATA/profile.lock.reap"
+
+# ---- 49. reap gate 属主记录矩阵：损坏可恢复、PID 复用可证明、活属主必保留 ----
+sleep 120 & _LIVE=$!
+_LIVE_START=$(awk '{print $22}' "/proc/$_LIVE/stat" 2>/dev/null)
+_gate_case() {
+    OUT=$(run '
+        PROC=/proc; export SF_PROC=/proc
+        recover_stale_reap_gate "$PROFILE_LOCK.reap" >/dev/null 2>&1; _rc=$?
+        printf "%s|%s" "$_rc" "$([ -d "$PROFILE_LOCK.reap" ] && echo kept || echo gone)"
+    ')
+    printf '%s' "$OUT"
+}
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf 'garbage\n' > "$DATA/profile.lock.reap/pid"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+_r1=$(_gate_case)
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '424242\n' > "$DATA/profile.lock.reap/pid"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+_r2=$(_gate_case)
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_LIVE" "999999999" > "$DATA/profile.lock.reap/pid"
+_r3=$(_gate_case)
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_LIVE" "$_LIVE_START" > "$DATA/profile.lock.reap/pid"
+_r4=$(_gate_case)
+rm -rf "$DATA/profile.lock.reap"
+kill "$_LIVE" 2>/dev/null; wait "$_LIVE" 2>/dev/null
+[ "$_r1|$_r2|$_r3|$_r4" = "0|gone|0|gone|0|gone|1|kept" ] && ok "gate 记录矩阵：损坏/无 starttime 陈旧可恢复，PID 复用可证明，活属主必保留" || bad "gate 记录矩阵：[$_r1|$_r2|$_r3|$_r4]"
+
+# ---- 50. A4：unlock_profile 必须 PID+starttime 双校验 ----
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -rf "$PROFILE_LOCK"
+    lock_profile >/dev/null 2>&1 || exit 9
+    _self_start=$(proc_start_time $$)
+    printf "%s %s\n" "$$" "999999999" > "$PROFILE_LOCK/pid"
+    unlock_profile
+    _wrong=$([ -d "$PROFILE_LOCK" ] && echo kept || echo gone)
+    printf "%s %s\n" "$$" "$_self_start" > "$PROFILE_LOCK/pid"
+    unlock_profile
+    _right=$([ -d "$PROFILE_LOCK" ] && echo kept || echo gone)
+    lock_profile >/dev/null 2>&1 || exit 9
+    printf "garbage\n" > "$PROFILE_LOCK/pid"
+    unlock_profile
+    _corrupt=$([ -d "$PROFILE_LOCK" ] && echo kept || echo gone)
+    rm -rf "$PROFILE_LOCK"
+    printf "%s|%s|%s" "$_wrong" "$_right" "$_corrupt"
+')
+[ "$OUT" = "kept|gone|kept" ] && ok "unlock_profile：starttime 不符/记录损坏不解锁，双校验一致才解锁（A4）" || bad "unlock 身份校验：[$OUT]"
+
+# ---- 51. 并发 start/start/stop：session 锁串行化，最终状态必须自洽 ----
+run '
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    printf "%s\n" 100 > "$BL"; printf "%s\n" On > "$SYS/class/drm/card0-DSI-1/dpms"
+'
+( run 'PROC=/proc; export SF_PROC=/proc; sf_start 1 >/dev/null 2>&1; printf "%s" "$?"' > "$T/r51a" ) &
+( run 'PROC=/proc; export SF_PROC=/proc; sf_start 1 >/dev/null 2>&1; printf "%s" "$?"' > "$T/r51b" ) &
+( run 'PROC=/proc; export SF_PROC=/proc; sf_stop >/dev/null 2>&1; printf "%s" "$?"' > "$T/r51c" ) &
+wait
+_rcs="$(cat "$T/r51a" 2>/dev/null)$(cat "$T/r51b" 2>/dev/null)$(cat "$T/r51c" 2>/dev/null)"
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    _s=$(read_node "$STOPF" 2>/dev/null)
+    _l=$([ -d "$SESSION_LOCK" ] && echo 1 || echo 0)
+    _d=$([ -s "$DEF" ] && echo 1 || echo 0)
+    _p=$([ -f "$SUPIDF" ] && echo 1 || echo 0)
+    printf "%s|%s|%s|%s" "$_s" "$_l" "$_d" "$_p"
+')
+# 返回码语义（rc6 探针三轮实测后定稿，不再只验“全是数字”）：stop 恒为 0；
+# 两个 start 至多一个以 1 干净失败（竞争落败并完成回滚），不得双双失败、
+# 不得出现其它返回码；同时最终状态必须自洽（started/stopped 二选一）。
+case "$_rcs" in
+    000|010|100)
+        case "$OUT" in
+            "0|0|1|1") _state=started ;;
+            "1|0|0|0") _state=stopped ;;
+            *) _state="incoherent:$OUT" ;;
+        esac ;;
+    *) _state="badrc:$_rcs" ;;
+esac
+run 'PROC=/proc; export SF_PROC=/proc; sf_stop >/dev/null 2>&1'
+case "$_state" in
+    started|stopped)
+        case "$_rcs" in
+            010|100)
+                if grep -E '遗留回收门禁未能安全恢复，拒绝启动|生命周期操作正在执行' "$DATA/smoothflow.log" >/dev/null 2>&1; then
+                    ok "并发启停拒绝原因有门禁/生命周期日志证据"
+                else
+                    bad "并发启停出现单个 start 返回 1，但日志缺少门禁拒绝证据"
+                fi ;;
+        esac
+        ok "并发启停返回码合规（$_rcs）且状态自洽（$_state）、无 session 锁泄漏" ;;
+    *) bad "并发启停一致性：[$_state]" ;;
+esac
+
+# ---- 52. uninstall：恢复失败时中止且保留数据，成功时先恢复再归档 ----
+UNINST="$T/uninst"
+mkdir -p "$UNINST"
+cp "$HERE/../uninstall.sh" "$UNINST/"
+cp -r "$MODROOT/bin" "$UNINST/"
+run '
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    capture_all
+    apply_game >/dev/null 2>&1
+'
+run 'rm -f "$STOPF"; mkdir "$STOPF"'
+SF_TEST_MODE=1 SF_SYS=$SYS SF_PROC=/proc SF_CG=$CG SF_DATADIR=$DATA SF_TRASH=$TRASH SF_GETPROP="$T/getprop" sh "$UNINST/uninstall.sh" >/dev/null 2>&1; _neg_rc=$?
+_neg_data=$([ -d "$DATA" ] && echo kept || echo gone)
+_neg_node=$(IFS= read -r _v < "$P0/walt/hispeed_load"; printf '%s' "$_v")
+run 'rmdir "$STOPF"'
+SF_TEST_MODE=1 SF_SYS=$SYS SF_PROC=/proc SF_CG=$CG SF_DATADIR=$DATA SF_TRASH=$TRASH SF_GETPROP="$T/getprop" sh "$UNINST/uninstall.sh" >/dev/null 2>&1; _pos_rc=$?
+_pos_data=$([ -d "$DATA" ] && echo kept || echo gone)
+_pos_node=$(IFS= read -r _v < "$P0/walt/hispeed_load"; printf '%s' "$_v")
+_trash_n=$(ls "$TRASH" 2>/dev/null | wc -l)
+if [ "$_neg_rc" != 0 ] && [ "$_neg_data" = kept ] && [ "$_neg_node" = 78 ] && [ "$_pos_rc" = 0 ] && [ "$_pos_data" = gone ] && [ "$_pos_node" = 90 ] && [ "$_trash_n" -ge 1 ]; then
+    ok "uninstall：停止标记不可写时中止卸载并保留快照，正常时先恢复节点再归档数据"
+else
+    bad "uninstall 恢复路径：[neg=$_neg_rc/$_neg_data/$_neg_node pos=$_pos_rc/$_pos_data/$_pos_node trash=$_trash_n]"
+fi
+
+# ---- 53. M1 真实注入：gate 创建后、pid 发布前强杀进程，sf_start 必须越过遗留 gate ----
+mkdir -p "$DATA"
+printf 'SM8850P\n' > "$DATA/mock_soc"
+printf 'OPD2513\n' > "$DATA/mock_device"
+rm -rf "$DATA/profile.lock.reap"
+sh -c 'mkdir "$1"; sleep 30' _ "$DATA/profile.lock.reap" & _HOLDER=$!
+sleep 0.5
+kill -9 "$_HOLDER" 2>/dev/null; wait "$_HOLDER" 2>/dev/null
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    rm -f "$PIDF" "$SUPIDF" "$DEF" "$APPLIED" "$STOPF"
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DAEMON_LOCK" "$SESSION_LOCK"
+    printf "%s\n" 100 > "$BL"; printf "%s\n" On > "$SYS/class/drm/card0-DSI-1/dpms"
+    sf_start 1 >/dev/null 2>&1; _rc=$?
+    _g=$([ -d "$PROFILE_LOCK.reap" ] && echo kept || echo gone)
+    sf_stop >/dev/null 2>&1
+    printf "%s|%s" "$_rc" "$_g"
+')
+[ "$OUT" = "0|gone" ] && ok "持锁者发布 pid 前被强杀留下的无主 gate 不再锁死启动（M1 端到端）" || bad "M1 强杀注入端到端：[$OUT]"
+
+# ---- 54. M1-A：观察窗内或改名后出现迟到属主记录，无主 gate 必须还原保留 ----
+# 54a：记录在 1 秒观察窗内出现（模拟属主被暂停后恢复发布）——mtime 与记录
+# 内容双重变化必须被任一守卫拦下，gate 与记录一并保留。
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    sleep 120 & _P=$!
+    _S=$(proc_start_time $_P 2>/dev/null)
+    ( sleep 0.3; printf "%s %s\n" "$_P" "$_S" > "$PROFILE_LOCK.reap/pid" ) &
+    recover_stale_reap_gate "$PROFILE_LOCK.reap" >/dev/null 2>&1; _rc=$?
+    kill "$_P" 2>/dev/null
+    _g=$([ -d "$PROFILE_LOCK.reap" ] && echo kept || echo gone)
+    _rec=$(read_node "$PROFILE_LOCK.reap/pid" 2>/dev/null)
+    _recok=$([ "$_rec" = "$_P $_S" ] && echo ok || echo bad)
+    printf "%s|%s|%s" "$_rc" "$_g" "$_recok"
+')
+rm -rf "$DATA/profile.lock.reap"
+[ "$OUT" = "1|kept|ok" ] && ok "观察窗内出现迟到属主记录时无主 gate 保留不删（M1-A 观察窗）" || bad "M1-A 观察窗注入：[$OUT]"
+# 54b：以函数桩包装 mv，在隔离改名完成后、删除前向隔离副本植入一条可解析
+# 属主记录（确定性复现“末次检查与改名之间发布记录”的竞态结果）——改名后
+# 复查必须发现记录并把 gate 原样还原，不得删除。
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+OUT=$(run '
+    PROC=/proc; export SF_PROC=/proc
+    sleep 120 & _P=$!
+    _S=$(proc_start_time $_P 2>/dev/null)
+    mv() {
+        command mv "$@" || return $?
+        for _a; do _dst=$_a; done
+        case "$_dst" in *.stale.*) printf "%s %s\n" "$_P" "$_S" > "$_dst/pid" 2>/dev/null ;; esac
+        return 0
+    }
+    recover_stale_reap_gate "$PROFILE_LOCK.reap" >/dev/null 2>&1; _rc=$?
+    kill "$_P" 2>/dev/null
+    _g=$([ -d "$PROFILE_LOCK.reap" ] && echo kept || echo gone)
+    _rec=$(read_node "$PROFILE_LOCK.reap/pid" 2>/dev/null)
+    _recok=$([ "$_rec" = "$_P $_S" ] && echo ok || echo bad)
+    _left=$(ls -d "$PROFILE_LOCK.reap".stale.* 2>/dev/null | wc -l)
+    printf "%s|%s|%s|%s" "$_rc" "$_g" "$_recok" "$_left"
+')
+rm -rf "$DATA/profile.lock.reap"
+[ "$OUT" = "1|kept|ok|0" ] && ok "改名后出现属主记录时隔离副本必须还原不删（M1-A 改名后复查）" || bad "M1-A 改名后注入：[$OUT]"
+
+# ---- 55. M1-B：非数字 starttime 不得冒充死亡证明；僵尸/死 PID 可回收 ----
+sleep 600 & _LIVE55=$!
+_LIVE55_START=$(awk '{print $22}' "/proc/$_LIVE55/stat" 2>/dev/null)
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_LIVE55" "notanumber" > "$DATA/profile.lock.reap/pid"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+_b1=$(_gate_case)
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_LIVE55" "999999999" > "$DATA/profile.lock.reap/pid"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+_b2=$(_gate_case)
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_LIVE55" "$_LIVE55_START" > "$DATA/profile.lock.reap/pid"
+_b3=$(_gate_case)
+# 死 PID 由真实短命子进程产生并 wait 回收，不依赖固定 PID 常量。
+sleep 0.05 & _DEAD55=$!
+wait "$_DEAD55" 2>/dev/null
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_DEAD55" "notanumber" > "$DATA/profile.lock.reap/pid"
+touch -d "@$(( $(date +%s) - 120 ))" "$DATA/profile.lock.reap"
+_b4=$(_gate_case)
+# 僵尸 PID + 非数字 starttime：严格启动恢复判定应以 Z 状态优先于格式校验。
+_ZPID55=424241
+mkdir -p "$PROC/$_ZPID55"
+printf '%s (zombie) Z 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 12345\n' "$_ZPID55" > "$PROC/$_ZPID55/stat"
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_ZPID55" "notanumber" > "$DATA/profile.lock.reap/pid"
+run 'reap_gate_owner_stale "$PROFILE_LOCK.reap" >/dev/null 2>&1; printf "%s" "$?"' > "$T/r55gate_zombie"
+_gz=$(cat "$T/r55gate_zombie")
+rm -rf "$DATA/profile.lock.reap"; mkdir -p "$DATA/profile.lock.reap"
+printf '%s %s\n' "$_ZPID55" "notanumber" > "$DATA/profile.lock.reap/pid"
+run 'reap_gate_stale "$PROFILE_LOCK.reap" >/dev/null 2>&1; _rc=$?; printf "%s|%s" "$_rc" "$([ -d "$PROFILE_LOCK.reap" ] && echo kept || echo gone)"' > "$T/r55lock_zombie"
+_lz=$(cat "$T/r55lock_zombie")
+rm -rf "$DATA/profile.lock.reap" "$PROC/$_ZPID55"
+kill "$_LIVE55" 2>/dev/null; wait "$_LIVE55" 2>/dev/null
+[ "$_b1|$_b2|$_b3|$_b4|$_gz|$_lz" = "1|kept|0|gone|1|kept|0|gone|0|0|gone" ] && ok "非数字 starttime：活属主保留、死 PID 与僵尸 PID 均可回收（严格 gate + lock gate）" || bad "M1-B 记录矩阵：[$_b1|$_b2|$_b3|$_b4|$_gz|$_lz]"
+
+# ---- 56. 发布守卫负向：自身 stat 不可读时三类锁均不得发布 ----
+OUT=$(run '
+    rm -rf "$PROFILE_LOCK" "$SUPLOCK" "$DATA/reap-guard.lock" "$DATA/reap-guard.lock.reap"
+    rm -f "$PROC/$$/stat"
+    lock_profile >/dev/null 2>&1; _lp=$?
+    acquire_supervisor_lock >/dev/null 2>&1; _asl=$?
+    reap_lock_dir "$DATA/reap-guard.lock" >/dev/null 2>&1; _rld=$?
+    _profile=$([ -d "$PROFILE_LOCK" ] && echo dir || echo clean)
+    _super=$([ -d "$SUPLOCK" ] && echo dir || echo clean)
+    _reap=$([ -d "$DATA/reap-guard.lock.reap" ] && echo dir || echo clean)
+    _pid=$([ -e "$PROFILE_LOCK/pid" ] || [ -e "$SUPLOCK/pid" ] || [ -e "$DATA/reap-guard.lock.reap/pid" ] && echo present || echo absent)
+    printf "%s|%s|%s|%s|%s|%s|%s" "$_lp" "$_asl" "$_rld" "$_profile" "$_super" "$_reap" "$_pid"
+')
+[ "$OUT" = "1|1|1|clean|clean|clean|absent" ] && ok "自身 stat 不可读时 profile/supervisor/reap 锁均拒绝发布并清理空目录" || bad "发布守卫负向：[$OUT]"
 
 printf '\n通过 %s 项，失败 %s 项\n' "$PASS" "$FAIL"
 [ "$FAIL" = 0 ]
